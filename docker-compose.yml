@@ -1,0 +1,74 @@
+# IG AI 戀愛顧問：正式模式（migrate-to-postgres-and-containerize 決策 7）
+#
+#   docker compose up -d                 啟動全部（正式模式）
+#   docker compose ps                    看三個服務是否健康
+#   docker compose logs -f app           看應用程式 log
+#
+# 開發模式（掛載本機程式碼、存檔自動重載）另見 docker-compose.dev.yml。
+# 設定與祕密一律來自同目錄的 .env（範本見 .env.example）。
+
+name: cia
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?請在 .env 設定 POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?請在 .env 設定 POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:?請在 .env 設定 POSTGRES_DB}
+      TZ: UTC
+    volumes:
+      # named volume，不用 Windows 資料夾：跨 WSL2 掛載有權限與一致性問題
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      # 只開給本機：轉檔腳本、主機上直接跑 alembic／uvicorn 時使用，不對外。
+      # 不用 5432：這台桌機原生安裝的 PostgreSQL 13／16 服務已佔用 5432、5433
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-15432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  app:
+    build: .
+    image: cia-app
+    # 不要加 deploy.replicas 或改成多個 worker：速率配額與靜默輪詢都在
+    # 行程記憶體內，多一份就會重複計算、重複結束對話與發送邀請
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      # .env 的 DATABASE_URL 是給主機用的（127.0.0.1），容器內改連 db
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    volumes:
+      # 人設卡掛到容器內原本的路徑（決策 8）：改人設只要重啟 app，不必重建映像檔
+      - ./app/personas/cards:/app/app/personas/cards:ro
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      # slim 映像沒有 curl；/health 會實際查詢資料庫，連不上回 503
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+
+  ngrok:
+    image: ngrok/ngrok:3
+    restart: unless-stopped
+    # 免費版同一時間只允許一個 agent：主機上的 ngrok 必須先關掉
+    command: ["http", "app:8000", "--url", "${NGROK_DOMAIN:?請在 .env 設定 NGROK_DOMAIN}"]
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:?請在 .env 設定 NGROK_AUTHTOKEN}
+    depends_on:
+      - app
+    ports:
+      # 請求檢視介面（可 Replay 重送 webhook），開 http://127.0.0.1:4040
+      - "127.0.0.1:4040:4040"
+
+volumes:
+  pgdata:

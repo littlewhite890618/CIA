@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>{% block title %}後台{% endblock %}</title>
+<style>
+  /* 暫用的樸素樣式：UI 風格之後另行設計（design.md 決策 8） */
+  :root { --bg: #f6f7f6; --surface: #fff; --fg: #1d2420; --muted: #5d6b63; --line: #d6ddd8;
+          --accent: #23784a; --danger: #b3261e; --notice: #e3f1e8; color-scheme: light; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #131815; --surface: #1b211d; --fg: #e4ebe6; --muted: #98a69e; --line: #313b35;
+            --accent: #6fcf95; --danger: #ff8a80; --notice: #1e3427; color-scheme: dark; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 15px/1.6 "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; }
+  header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 20px; }
+  h1 { font-size: 1.4rem; margin: 0; }
+  h2 { font-size: 1.1rem; margin: 0 0 12px; }
+  section { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px 20px; margin-bottom: 16px; }
+  label { display: block; font-weight: 600; margin: 10px 0 4px; }
+  input { font: inherit; width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px;
+          background: var(--bg); color: var(--fg); }
+  .hint { color: var(--muted); font-size: .85rem; margin: 2px 0 0; }
+  button { font: inherit; font-weight: 600; padding: 7px 14px; border-radius: 6px; cursor: pointer;
+           border: 1px solid var(--accent); background: var(--accent); color: var(--surface); margin-top: 12px; }
+  button.secondary { background: transparent; color: var(--fg); border-color: var(--line); margin-top: 0; }
+  .error { color: var(--danger); font-weight: 600; }
+  .notice { background: var(--notice); border-color: var(--accent); }
+  .password { font-family: ui-monospace, Consolas, monospace; font-size: 1.1rem; user-select: all; }
+  table { width: 100%; border-collapse: collapse; }
+  td, th { text-align: left; padding: 6px 4px; border-top: 1px solid var(--line); vertical-align: middle; }
+  th { color: var(--muted); font-weight: 600; font-size: .85rem; border-top: 0; }
+  .muted { color: var(--muted); }
+  code { font-family: ui-monospace, Consolas, monospace; }
+  form.inline { display: inline; }
+</style>
+</head>
+<body>
+<main>
+{% block body %}{% endblock %}
+</main>
+</body>
+</html>

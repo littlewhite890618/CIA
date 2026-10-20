@@ -1,0 +1,32 @@
+# 祕密與資料不進映像檔（container-runtime spec：祕密不進入映像檔）
+.env
+.env.*
+!.env.example
+data/
+
+# 本機環境與快取
+.venv/
+venv/
+.pytest_cache/
+**/__pycache__/
+**/*.py[cod]
+.vscode/
+.idea/
+.claude/
+
+# 前端：node_modules 是 Windows 主機裝的（含平台專屬的原生檔），映像檔內在 Linux 重新安裝；
+# dist 由映像檔內建置，不用主機上的
+frontend/node_modules/
+frontend/dist/
+
+# 規劃文件與測試不需要在執行環境裡
+openspec/
+docs/
+tests/
+.impeccable/
+PRODUCT.md
+
+# 容器設定本身
+Dockerfile
+docker-compose*.yml
+.dockerignore

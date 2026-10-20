@@ -1,0 +1,27 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+data/*.db
+data/*.db-journal
+.pytest_cache/
+.vscode/
+.idea/
+
+# 資料庫備份與本機資料：含使用者對話，絕不進版控
+data/*.dump
+data/*.db-shm
+data/*.db-wal
+
+# 前端：套件與打包結果（Docker 映像檔內重新安裝、建置）
+frontend/node_modules/
+frontend/dist/
+
+# 本機工具設定
+.claude/
+
+# 工具快取與建置產物
+.impeccable/hook.cache.json
+.impeccable/questions/
+frontend/*.tsbuildinfo

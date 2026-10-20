@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}{{ tenant.name }}{% endblock %}
+{% block body %}
+<header>
+  <h1>{{ tenant.name }}</h1>
+  <form class="inline" method="post" action="/logout">
+    <span class="muted">{{ me.username }}</span>
+    <button class="secondary" type="submit">登出</button>
+  </form>
+</header>
+<section>
+  <h2>你的專屬代碼</h2>
+  <p><code>{{ tenant.ref_code }}</code></p>
+  <p class="hint">使用者透過帶有這個代碼的私訊連結找晴晴，就會被算成你帶來的使用者。</p>
+</section>
+<section>
+  <h2>統計</h2>
+  <p class="muted">統計頁尚未完成（M13 第 7 部分）。</p>
+</section>
+{% endblock %}

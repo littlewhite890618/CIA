@@ -1,0 +1,29 @@
+# ── Web 框架 ──
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+# 管理員、客戶、使用者設定頁以伺服器端產生 HTML（M13 第 5 群起）
+jinja2==3.1.6
+# FastAPI 讀取 HTML 表單（Form）必需
+python-multipart==0.0.32
+
+# ── 設定與環境變數 ──
+pydantic==2.10.4
+pydantic-settings==2.7.1
+python-dotenv==1.0.1
+
+# ── 資料層 ──
+# 正式環境為 PostgreSQL 16；測試與不用 Docker 的本機執行仍可用 SQLite
+SQLAlchemy==2.0.36
+alembic==1.14.0
+# [binary] 附預先編譯的 libpq，slim 映像檔不必另裝編譯工具
+psycopg[binary]==3.3.6
+
+# ── 人設卡 ──
+PyYAML==6.0.2
+
+# ── HTTP 客戶端（Instagram API、LLM 供應商）──
+httpx==0.28.1
+
+# ── 開發與測試 ──
+pytest==8.3.4
+pytest-asyncio==0.25.0

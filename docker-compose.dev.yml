@@ -1,0 +1,28 @@
+# 開發模式（migrate-to-postgres-and-containerize 決策 10）：只覆寫 app
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d   切到開發模式
+#   docker compose up -d                                                   切回正式模式
+#
+# 刻意不取名 docker-compose.override.yml——那個檔名會被自動載入，在這台
+# 同時對外服務的主機上，等於讓開發模式變成預設。
+#
+# ⚠️ 開發模式下存檔會立刻影響正在聊天的使用者。對外開放後只在維護時段使用。
+# 改了 requirements.txt 仍要重建映像檔：docker compose build app
+
+services:
+  app:
+    # 仍先套用遷移：新增的 Alembic revision 重啟 app 就會生效。
+    # 不加 --workers（與 --reload 互斥）；--reload 是一個監看行程加一個
+    # 工作行程，處理 webhook 與靜默輪詢的仍只有一個行程。
+    command: ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir app"]
+    environment:
+      # Windows 掛進 WSL2 容器時，檔案變動的通知傳不進容器，要改用輪詢
+      WATCHFILES_FORCE_POLLING: "true"
+      # 不在本機的 app/ 底下寫 __pycache__
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      # 掛到容器內原本的路徑，覆蓋映像檔裡的那一份
+      - ./app:/app/app
+      - ./alembic:/app/alembic
+      - ./alembic.ini:/app/alembic.ini
+      - ./scripts:/app/scripts

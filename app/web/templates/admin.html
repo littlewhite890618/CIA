@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}管理員{% endblock %}
+{% block body %}
+<header>
+  <h1>管理員</h1>
+  <form class="inline" method="post" action="/logout">
+    <span class="muted">{{ me.username }}</span>
+    <button class="secondary" type="submit">登出</button>
+  </form>
+</header>
+
+{% if notice %}
+<section class="notice">
+  <h2>{{ notice.title }}</h2>
+  <p>登入帳號：<code>{{ notice.username }}</code></p>
+  <p>密碼：<span class="password">{{ notice.password }}</span></p>
+  <p class="hint">密碼只會顯示這一次，離開這頁就看不到了。請現在複製並轉交給對方。</p>
+</section>
+{% endif %}
+
+{% if error %}
+<section><p class="error">{{ error }}</p></section>
+{% endif %}
+
+<section>
+  <h2>開通客戶</h2>
+  <form method="post" action="/admin/tenants">
+    <label for="name">客戶名稱</label>
+    <input id="name" name="name" value="{{ form.name if form else '' }}" required maxlength="128">
+    <label for="ref_code">專屬代碼</label>
+    <input id="ref_code" name="ref_code" value="{{ form.ref_code if form else '' }}" required maxlength="64"
+           pattern="[A-Za-z0-9_=\-]{1,64}">
+    <p class="hint">放在客戶專屬連結裡，用來辨認使用者是哪個客戶帶來的。只能用英數與 - _ =，開通後不可更改。</p>
+    <label for="username">登入帳號</label>
+    <input id="username" name="username" value="{{ form.username if form else '' }}" required
+           pattern="[A-Za-z0-9_.@\-]{3,64}">
+    <p class="hint">3～64 個英數字元，可含 _ . @ -。初始密碼由系統產生。</p>
+    <button type="submit">開通</button>
+  </form>
+</section>
+
+<section>
+  <h2>客戶</h2>
+  {% if tenants %}
+  <table>
+    <tr><th>客戶</th><th>專屬代碼</th><th>登入帳號</th><th></th></tr>
+    {% for row in tenants %}
+      {% for account in row.accounts %}
+      <tr>
+        <td>{{ row.tenant.name }}</td>
+        <td><code>{{ row.tenant.ref_code }}</code></td>
+        <td>{{ account.username }}</td>
+        <td>
+          <form class="inline" method="post" action="/admin/accounts/{{ account.id }}/reset-password">
+            <button class="secondary" type="submit">重設密碼</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td>{{ row.tenant.name }}</td><td><code>{{ row.tenant.ref_code }}</code></td><td class="muted">（無帳號）</td><td></td></tr>
+      {% endfor %}
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">還沒有客戶。</p>
+  {% endif %}
+</section>
+
+<section>
+  <h2>管理員</h2>
+  <table>
+    <tr><th>登入帳號</th><th></th></tr>
+    {% for account in admins %}
+    <tr>
+      <td>{{ account.username }}{% if account.id == me.id %} <span class="muted">（你）</span>{% endif %}</td>
+      <td>
+        <form class="inline" method="post" action="/admin/accounts/{{ account.id }}/reset-password">
+          <button class="secondary" type="submit">重設密碼</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  <form method="post" action="/admin/admins">
+    <label for="admin_username">新增管理員</label>
+    <input id="admin_username" name="username" required pattern="[A-Za-z0-9_.@\-]{3,64}">
+    <button type="submit">新增</button>
+  </form>
+</section>
+{% endblock %}

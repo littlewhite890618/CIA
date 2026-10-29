@@ -29,6 +29,9 @@ from sqlalchemy.orm import Session as DBSession
 from app.db.models import SettingsLinkClaim
 
 COOKIE_NAME = "settings_claim"
+# 教練回饋連結（daily-coach-report-link 任務 4.2）共用同一張登記表（以 token 雜湊為鍵，
+# 兩種 token 不會撞），cookie 另取名，路徑限定 /api/report，與設定頁互不干擾
+REPORT_COOKIE_NAME = "report_claim"
 # 連結過期後多留一天再清，純粹避免表一直長大；留著不影響正確性（過期的連結本來就會被拒絕）
 _PURGE_AFTER = timedelta(days=1)
 

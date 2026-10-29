@@ -23,6 +23,8 @@ PyYAML==6.0.2
 
 # ── HTTP 客戶端（Instagram API、LLM 供應商）──
 httpx==0.28.1
+# 模型輸出殘留簡體字時轉成繁體（daily-coach-report-link 任務 2.1）；純 Python，映像檔不需額外系統套件
+opencc-python-reimplemented==0.1.7
 
 # ── 開發與測試 ──
 pytest==8.3.4

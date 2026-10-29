@@ -1,0 +1,153 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-22T00:00:00+08:00",
+  "title": "Design System: 晴晴的活頁本",
+  "extensions": {
+    "colorMeta": {
+      "paper": { "role": "neutral", "displayName": "白紙", "canonical": "#ffffff", "tonalRamp": ["#1d2533", "#3a4659", "#5b6a80", "#8190a6", "#a9b6c9", "#d1dae6", "#eef2f8", "#ffffff"] },
+      "paper-hover": { "role": "neutral", "displayName": "紙面滑過", "canonical": "#f2f7ff", "tonalRamp": ["#0f2350", "#1f3f86", "#3a62b8", "#6a8fd6", "#9fbbec", "#cbdcf8", "#e4eefe", "#f2f7ff"] },
+      "rule": { "role": "neutral", "displayName": "淺藍橫線", "canonical": "#dce8fb", "tonalRamp": ["#0e2552", "#1d438a", "#3565bd", "#5d8ad8", "#8eb0eb", "#bcd1f5", "#dce8fb", "#f1f6fe"] },
+      "rule-strong": { "role": "neutral", "displayName": "深一點的橫線", "canonical": "#a9c4f2", "tonalRamp": ["#0c2250", "#1a3f88", "#3062bd", "#5786d9", "#a9c4f2", "#c9daf7", "#e2ecfb", "#f3f7fe"] },
+      "print": { "role": "neutral", "displayName": "深藍印刷字", "canonical": "#13254a", "tonalRamp": ["#13254a", "#22396a", "#3a5285", "#56688a", "#7d8daa", "#a8b4c9", "#d2d9e5", "#eef1f6"] },
+      "print-muted": { "role": "neutral", "displayName": "淡印刷字", "canonical": "#56688a", "tonalRamp": ["#13254a", "#2b3d60", "#41537a", "#56688a", "#7a89a5", "#a2adc2", "#cbd2df", "#eceff4"] },
+      "ink": { "role": "primary", "displayName": "藍色原子筆", "canonical": "#1a5fe0", "tonalRamp": ["#0a2a6b", "#1550c4", "#1a5fe0", "#4a80ea", "#7da3f0", "#adc6f6", "#d6e3fb", "#eef4fe"] },
+      "ink-pressed": { "role": "primary", "displayName": "按下的原子筆", "canonical": "#1550c4", "tonalRamp": ["#08245c", "#103e9a", "#1550c4", "#3f72dc", "#729ae8", "#a6c0f3", "#d2e0fa", "#edf3fe"] },
+      "highlight": { "role": "secondary", "displayName": "淺藍螢光筆", "canonical": "#dceaff", "tonalRamp": ["#0d2a5e", "#1b4a9c", "#3570d0", "#6697ea", "#9dbdf6", "#c4d9fd", "#dceaff", "#f1f7ff"] },
+      "redpen": { "role": "tertiary", "displayName": "紅筆", "canonical": "#d33434", "tonalRamp": ["#4d0f0f", "#8a1d1d", "#b52a2a", "#d33434", "#e06b6b", "#eca1a1", "#f6d2d2", "#fdf0f0"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "頁名", "purpose": "設定頁的頁名與提示頁標題；粉圓體 400，桌面 2.25rem。" },
+      "headline": { "displayName": "信紙抬頭", "purpose": "回饋信紙的日期，藍筆色；時段 0.78em 接在同一行；桌面 1.875rem。" },
+      "title": { "displayName": "封面標題", "purpose": "封面帶上的「{角色名}的設定／聊天回饋」，單行截斷；桌面 1.625rem。" },
+      "body": { "displayName": "內文", "purpose": "全站內文基準。" },
+      "body-written": { "displayName": "寫上的值", "purpose": "使用者的值（藍筆）與印好的值（深藍 500）。" },
+      "body-letter": { "displayName": "信紙內文", "purpose": "回饋信紙內文，行高與橫線一致，最寬 34em；桌面 1.125rem。" },
+      "label": { "displayName": "欄位名稱", "purpose": "欄位名稱；信紙段落小標用同樣處理放大到 0.9375rem。" },
+      "meta": { "displayName": "小字資訊", "purpose": "剩餘時間、頁碼、預設值提示，等寬數字。" }
+    },
+    "shadows": [
+      { "name": "sheet-on-desk", "value": "0 1px 2px rgb(20 50 120 / 0.08), 0 18px 44px -10px rgb(20 50 120 / 0.22)", "purpose": "720px 以上整張活頁紙放在桌上。" },
+      { "name": "letter-stack", "value": "0 0 0 1px #dce8fb, 0 6px 0 -4px #ffffff, 0 6px 0 -3px #a9c4f2, 0 11px 0 -8px #ffffff, 0 11px 0 -7px #dce8fb, 0 1px 2px rgb(20 50 120 / 0.06), 0 16px 26px -16px rgb(20 50 120 / 0.3)", "purpose": "回饋信紙：外框加底下露出的兩道紙邊與柔和影子。" },
+      { "name": "pager-lift", "value": "0 -8px 18px -12px rgb(20 50 120 / 0.22)", "purpose": "底部固定翻頁列往上的淡影。" },
+      { "name": "cover-button", "value": "0 1px 2px rgb(20 50 120 / 0.12)", "purpose": "封面帶實心按鈕的一點厚度。" }
+    ],
+    "motion": [
+      { "name": "ease-write", "value": "cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "螢光筆畫過、換頁、勾選、字寫上信紙的共同曲線。" },
+      { "name": "highlighter-sweep", "value": "background-size 460ms", "purpose": "改過的值，螢光筆從左畫到右。" },
+      { "name": "page-in", "value": "260ms, opacity 0.4→1, translateY 6px→0", "purpose": "設定頁換頁。" },
+      { "name": "check-pop", "value": "transform 160ms", "purpose": "勾選框的勾彈出。" },
+      { "name": "button-press", "value": "background-color 150ms ease-out, transform 150ms ease-out; active translateY(1px)", "purpose": "按鈕滑過與按下。" },
+      { "name": "pen-write", "value": "6s cubic-bezier(0.45, 0, 0.25, 1) infinite, delay i*0.9s", "purpose": "整理中：藍筆筆跡沿空白橫線一行一行寫過去。" },
+      { "name": "write-in", "value": "900ms clip-path inset(0 82% 0 0)→inset(0), delay order*140ms", "purpose": "回饋段落寫好時由左到右寫上信紙。" },
+      { "name": "reduced-motion", "value": "prefers-reduced-motion: reduce", "purpose": "以上動態全部取消，筆跡不畫，內容直接出現。" }
+    ],
+    "breakpoints": [
+      { "name": "desk", "value": "720px", "purpose": "以上時紙張浮在桌上：頁邊線 64px、內容左緣 92px、右緣 48px、封面帶 76px。" }
+    ]
+  },
+  "components": [
+    {
+      "name": "主要按鈕",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "推進的動作：下一頁、儲存、回到聊天。",
+      "html": "<button class=\"ds-btn\">下一頁</button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 48px; padding: 0 20px; border: 0; border-radius: 10px; background: #1a5fe0; color: #ffffff; font: 700 1rem/1.6 system-ui, -apple-system, 'PingFang TC', 'Noto Sans TC', sans-serif; cursor: pointer; transition: background-color 150ms ease-out, transform 150ms ease-out; } .ds-btn:hover { background: #1550c4; } .ds-btn:active { transform: translateY(1px); } .ds-btn:focus-visible { outline: 2px solid #1a5fe0; outline-offset: 3px; }"
+    },
+    {
+      "name": "外框按鈕",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "次要動作：上一頁、再試一次、新增規則。",
+      "html": "<button class=\"ds-btn-ghost\">上一頁</button>",
+      "css": ".ds-btn-ghost { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 48px; padding: 0 20px; border: 0; border-radius: 10px; background: transparent; color: #13254a; box-shadow: inset 0 0 0 1.5px #a9c4f2; font: 700 1rem/1.6 system-ui, -apple-system, 'PingFang TC', 'Noto Sans TC', sans-serif; cursor: pointer; transition: background-color 150ms ease-out, transform 150ms ease-out; } .ds-btn-ghost:hover { background: #f2f7ff; } .ds-btn-ghost:active { transform: translateY(1px); } .ds-btn-ghost:focus-visible { outline: 2px solid #1a5fe0; outline-offset: 3px; }"
+    },
+    {
+      "name": "封面安靜按鈕",
+      "kind": "button",
+      "refersTo": "button-cover-quiet",
+      "description": "回饋頁封面帶右側的「回到聊天」，把實心按鈕留給頁尾。",
+      "html": "<a class=\"ds-btn-quiet\" href=\"#\"><svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M7.9 20A9 9 0 1 0 4 16.1L2 22Z\"/></svg>回到聊天</a>",
+      "css": ".ds-btn-quiet { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 18px; border-radius: 10px; background: transparent; color: #1a5fe0; box-shadow: inset 0 0 0 1.5px #a9c4f2; font: 700 1rem/1.6 system-ui, -apple-system, 'PingFang TC', 'Noto Sans TC', sans-serif; text-decoration: none; transition: background-color 150ms ease-out; } .ds-btn-quiet:hover { background: #f2f7ff; } .ds-btn-quiet:focus-visible { outline: 2px solid #1a5fe0; outline-offset: 3px; }"
+    },
+    {
+      "name": "寫在線上的輸入",
+      "kind": "input",
+      "refersTo": "line-input",
+      "description": "欄位名稱加一條橫線，值是藍筆字；改過時畫上螢光筆。",
+      "html": "<div class=\"ds-field\"><label class=\"ds-label\" for=\"ds-in\">說話的口頭禪</label><input id=\"ds-in\" class=\"ds-line is-changed\" value=\"欸你知道嗎\"></div>",
+      "css": ".ds-field { padding: 18px 0 12px; border-bottom: 1px solid #dce8fb; font-family: system-ui, -apple-system, 'PingFang TC', 'Noto Sans TC', sans-serif; } .ds-label { display: block; margin-bottom: 6px; font-size: 0.8125rem; font-weight: 700; letter-spacing: 0.02em; color: #13254a; } .ds-line { width: 100%; padding: 8px 0 6px; border: 0; border-bottom: 1px solid transparent; background: transparent; color: #1a5fe0; caret-color: #1a5fe0; font: 400 1.0625rem/1.6 inherit; } .ds-line.is-changed { background-image: linear-gradient(transparent 58%, #dceaff 58%, #dceaff 92%, transparent 92%); } .ds-line:focus { outline: none; border-bottom-color: #1a5fe0; box-shadow: 0 1px 0 #1a5fe0; }"
+    },
+    {
+      "name": "頁籤",
+      "kind": "nav",
+      "refersTo": "tab",
+      "description": "設定頁的九個頁籤；目前頁粗體加藍筆底線，改過的頁有螢光點。",
+      "html": "<nav class=\"ds-tabs\"><button class=\"ds-tab\" aria-current=\"page\">身分</button><button class=\"ds-tab\">背景<span class=\"ds-mark\"></span></button><button class=\"ds-tab\">個性</button></nav>",
+      "css": ".ds-tabs { display: flex; gap: 2px; border-bottom: 1px solid #dce8fb; background: #ffffff; font-family: system-ui, -apple-system, 'PingFang TC', 'Noto Sans TC', sans-serif; } .ds-tab { padding: 12px 10px 10px; border: 0; border-bottom: 2px solid transparent; background: none; color: #56688a; font-size: 0.9375rem; cursor: pointer; } .ds-tab:hover { color: #13254a; } .ds-tab[aria-current='page'] { color: #13254a; font-weight: 700; border-bottom-color: #1a5fe0; } .ds-tab:focus-visible { outline: 2px solid #1a5fe0; outline-offset: 3px; } .ds-mark { display: inline-block; width: 7px; height: 7px; margin-left: 5px; vertical-align: 2px; border-radius: 50%; background: #dceaff; box-shadow: 0 0 0 1px #a6b7d4; }"
+    },
+    {
+      "name": "類型標籤",
+      "kind": "chip",
+      "refersTo": "type-tag",
+      "description": "教練規則的類型；膠囊外框，顏色跟著文字。",
+      "html": "<span class=\"ds-tag\">亮點</span>",
+      "css": ".ds-tag { display: inline-block; padding: 1px 8px; border: 1px solid currentColor; border-radius: 999px; color: #1a5fe0; font: 700 0.75rem/1.6 system-ui, -apple-system, 'PingFang TC', 'Noto Sans TC', sans-serif; white-space: nowrap; }"
+    },
+    {
+      "name": "勾選框",
+      "kind": "input",
+      "refersTo": "check",
+      "description": "印好的小方格，勾選時填藍筆色。",
+      "html": "<input type=\"checkbox\" class=\"ds-check\" checked aria-label=\"啟用\">",
+      "css": ".ds-check { appearance: none; display: grid; place-content: center; width: 22px; height: 22px; margin: 0; border: 1.5px solid #13254a; border-radius: 4px; background: #ffffff; cursor: pointer; } .ds-check::after { content: ''; width: 6px; height: 11px; border-right: 2.5px solid #ffffff; border-bottom: 2.5px solid #ffffff; transform: rotate(45deg) translate(-1px, -1px) scale(0); transition: transform 160ms cubic-bezier(0.16, 1, 0.3, 1); } .ds-check:checked { background: #1a5fe0; border-color: #1a5fe0; } .ds-check:checked::after { transform: rotate(45deg) translate(-1px, -1px) scale(1); } .ds-check:focus-visible { outline: 2px solid #1a5fe0; outline-offset: 3px; }"
+    },
+    {
+      "name": "回饋信紙",
+      "kind": "card",
+      "refersTo": "letter",
+      "description": "一段對話一張信紙：粉圓體藍筆抬頭、雙線、段落寫在橫線上，原句藍筆、新說法加螢光筆。",
+      "html": "<article class=\"ds-letter\"><h2 class=\"ds-date\">10 月 22 日（四） <span class=\"ds-time\">凌晨 2:32–3:08</span></h2><h3 class=\"ds-sec\">換個說法試試</h3><p class=\"ds-text\">可以先分享自己再問：<span class=\"ds-said ds-new\">「我最近在學做菜，你平常會自己煮嗎？」</span></p></article>",
+      "css": ".ds-letter { position: relative; padding: 26px 18px 30px 24px; background: #ffffff; border-radius: 6px; box-shadow: 0 0 0 1px #dce8fb, 0 6px 0 -4px #ffffff, 0 6px 0 -3px #a9c4f2, 0 11px 0 -8px #ffffff, 0 11px 0 -7px #dce8fb, 0 1px 2px rgb(20 50 120 / 0.06), 0 16px 26px -16px rgb(20 50 120 / 0.3); font-family: system-ui, -apple-system, 'PingFang TC', 'Noto Sans TC', sans-serif; } .ds-letter::before { content: ''; position: absolute; top: 0; bottom: 0; left: 8px; width: 1px; background: #dce8fb; } .ds-date { margin: 0; padding-bottom: 12px; border-bottom: 3px double #a9c4f2; font: 400 1.625rem/1.2 Huninn, 'PingFang TC', sans-serif; color: #1a5fe0; } .ds-time { font-size: 0.78em; font-variant-numeric: tabular-nums; } .ds-sec { margin: 26px 0 4px; font-size: 0.9375rem; font-weight: 700; letter-spacing: 0.02em; color: #13254a; } .ds-text { max-width: 34em; margin: 0; font-size: 1.0625rem; line-height: 1.85; color: #13254a; background-image: linear-gradient(transparent calc(100% - 1px), #dce8fb 0); background-size: 100% 1.85em; } .ds-said { color: #1a5fe0; font-weight: 500; } .ds-new { background: linear-gradient(transparent 52%, #dceaff 0 92%, transparent 0); box-decoration-break: clone; -webkit-box-decoration-break: clone; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "白色活頁本",
+    "overview": "這套系統是一本白色活頁本：淺藍頁邊線、淺藍橫線，題目、標題和說明是印好的深藍字，使用者寫的、說過的話是藍色原子筆字。設定頁是替角色填的同學錄，一頁一個區段；教練回饋頁是同一本活頁裡疊起來的信紙，一段對話一張。兩頁的顏色、字體、按鈕和封面帶都一樣，看起來就是同一個產品。\n\n這是安靜、清爽、亮色的紙：一律白底，不做深色模式；對比清楚但不壓迫。手機上用整個螢幕寬度，只在左側留一條頁邊線；寬度 720px 以上時，紙張最寬 680px，放在白色桌面上，有圓角和柔和的影子。版面密度是「一題一條橫線」：每個欄位、每行內文都坐在一條淺藍線上。\n\n顏色有固定意思，不拿來裝飾：藍色原子筆＝使用者寫的或說過的話；淺藍螢光筆＝改過的值（設定頁）或建議的新說法（回饋頁）；紅筆＝錯誤，只出現在設定頁和連結錯誤的提示，回饋信紙上不出現。頁面文字用中立的設定頁口吻，畫面上只出現角色名字，沒有產品名稱或 logo。",
+    "keyCharacteristics": [
+      "永遠白紙白底，`color-scheme: light`，不跟著系統切換深色",
+      "淺藍頁邊線（距左 18px，桌面 64px）與淺藍橫線貫穿兩個頁面",
+      "印刷字（深藍）與原子筆字（藍）的分工就是資訊架構",
+      "粉圓體只用在標題和信紙抬頭，內文一律系統黑體",
+      "動態都是「書寫」：螢光筆從左畫到右、筆跡一行一行寫過去、字從左到右寫上去；減少動態時全部取消"
+    ],
+    "rules": [
+      { "name": "The 藍筆是你寫的 Rule", "body": "藍色原子筆字只代表使用者自己寫的值或說過的話。系統文字、說明、標題一律用深藍印刷字；不要因為「想強調」就把系統文字改成藍色。（例外只有互動元件本身：主要按鈕、文字按鈕、焦點外框、信紙抬頭日期。）", "section": "colors" },
+      { "name": "The 螢光筆是新的 Rule", "body": "淺藍螢光筆只標「跟原本不一樣」的東西：設定頁裡改過的值，回饋頁裡建議的新說法。不拿來當一般的強調或區塊底色。", "section": "colors" },
+      { "name": "The 紅筆不批改練習 Rule", "body": "紅筆用在錯誤與危險操作，絕對不用在教練回饋上。回饋信紙裡沒有紅字、沒有分數、等第、勾叉或對錯記號；「可以再調整的地方」和其他段落用一樣的深藍印刷字和藍筆原句。", "section": "colors" },
+      { "name": "The 永遠白紙 Rule", "body": "背景一律白色（`paper`），`theme-color` 是 `#FFFFFF`，`color-scheme` 固定為 light。不做深色模式，不換灰底、米白或有色背景（2026-10-15 經三輪配色確認）。", "section": "colors" },
+      { "name": "The 粉圓體只寫標題 Rule", "body": "粉圓體只用在頁名、封面標題、信紙抬頭和少數結語標題；欄位、按鈕、內文一律系統黑體。", "section": "typography" },
+      { "name": "The 16px 底線 Rule", "body": "任何會叫出鍵盤或原生選單的元件，字級至少 16px（1rem 以上），避免 iOS 自動放大畫面。", "section": "typography" },
+      { "name": "The 紙放在桌上 Rule", "body": "只有「一整張紙」會有影子；紙上的欄位、按鈕、清單都是平的，用橫線和留白分組，不用卡片或色塊。", "section": "elevation" }
+    ],
+    "dos": [
+      "Do 讓每個頁面都是白紙：背景 `#ffffff`、`color-scheme: light`、`theme-color #FFFFFF`，系統深色模式時也不變。",
+      "Do 使用者寫的值、使用者說過的原句用藍色原子筆（`ink`）；題目、標題、說明、印好的值用深藍印刷字（`print`）。",
+      "Do 改過的值（設定頁）和建議的新說法（回饋頁）畫淺藍螢光筆在字的下半部，`box-decoration-break: clone` 讓換行時每行都畫到。",
+      "Do 每個欄位、每行內文坐在一條淺藍橫線上；水平位置對齊頁邊線與內容左緣（手機 18／34px，桌面 64／92px）。",
+      "Do 標題用粉圓體 400，其他都用系統黑體；會叫出鍵盤的元件字級至少 16px。",
+      "Do 頁面文字用中立的設定頁口吻；封面標題寫成「{角色名}的設定」「{角色名}的聊天回饋」，畫面上只出現角色名字。",
+      "Do 動態做成書寫的動作（螢光筆畫過、筆跡寫過、字寫上去），並在 `prefers-reduced-motion: reduce` 時全部關掉。",
+      "Do 圖示用 Lucide 線條圖示（線寬 2，提示頁大圖示 2.25），裝飾性的圖示加 `aria-hidden`。"
+    ],
+    "donts": [
+      "Don't 做深色模式、灰底分組清單或有色背景。",
+      "Don't 在教練回饋上用紅筆，或顯示分數、等第、星等、勾叉、對錯記號；回饋不能像成績單或考卷。",
+      "Don't 把系統文字寫成藍筆色，讓「藍筆＝使用者寫的」失去意思。",
+      "Don't 把螢光筆當一般強調或區塊底色。",
+      "Don't 放產品名稱、logo 或客戶品牌；不讓角色本人在頁面文案裡說話。",
+      "Don't 把欄位或回饋段落包成卡片牆；分組用橫線和留白，影子只給整張紙。",
+      "Don't 把欄位做成方框輸入；值是寫在線上的字。唯一的外框控制是自訂表單裡的小下拉選單。"
+    ]
+  }
+}

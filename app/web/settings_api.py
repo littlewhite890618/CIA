@@ -7,7 +7,9 @@
 
 存取：token 就是憑證（app/auth/settings_link.py），綁定「使用者 × 共用角色」。
 過期回 401 {"error": "expired"}；竄改、格式錯誤、對應不到使用者一律回
-401 {"error": "invalid"}，不透露該使用者是否存在。
+401 {"error": "invalid"}，不透露該使用者是否存在。過期與「已在別處打開」
+另帶 keyword：簽章已驗證過，持有者本來就拿過連結、知道關鍵字；無效的連結
+不帶，免得任何人亂打一串就能問出關鍵字。
 
 設定頁的資料格式與後端人設卡幾乎相同，差在：值一律是字串（年齡、錯字率、秒數、
 布林值在這裡轉換），回覆延遲在畫面上是 runtime.delay_min／delay_max 兩欄。
@@ -213,7 +215,7 @@ def build_router(default_card_for: Callable[[str], PersonaCard | None]) -> APIRo
         try:
             link_id, expires_at = verify_token_with_expiry(token or "", secret=settings.settings_link_secret)
         except SettingsLinkExpired:
-            return None, _error(401, {"error": "expired"})
+            return None, _error(401, {"error": "expired", "keyword": settings.settings_keyword})
         except SettingsLinkInvalid:
             return None, _error(401, {"error": "invalid"})
         return (link_id, expires_at), None
@@ -252,7 +254,7 @@ def build_router(default_card_for: Callable[[str], PersonaCard | None]) -> APIRo
         link_id, expires_at = resolved
         claimed = claim(t, code, expires_at)
         if not claimed.allowed:
-            return _error(401, {"error": "used"})
+            return _error(401, {"error": "used", "keyword": get_settings().settings_keyword})
         settings = get_settings()
         with session_module.db_session() as db:
             link, persona, default = load(db, link_id)
@@ -278,6 +280,7 @@ def build_router(default_card_for: Callable[[str], PersonaCard | None]) -> APIRo
                 "defaults": {"card": card_to_ui(default), "coaching": default_coaching()},
                 "current": {"card": card_to_ui(current), "coaching": coaching},
                 "baselineNeverEngages": list(user_versions.SYSTEM_BASELINE_NEVER_ENGAGES),
+                "keyword": settings.settings_keyword,
             }
         return finish(JSONResponse(body, headers=_PRIVATE_HEADERS), claimed, expires_at)
 
@@ -293,7 +296,7 @@ def build_router(default_card_for: Callable[[str], PersonaCard | None]) -> APIRo
         link_id, expires_at = resolved
         claimed = claim(t, code, expires_at)
         if not claimed.allowed:
-            return _error(401, {"error": "used"})
+            return _error(401, {"error": "used", "keyword": get_settings().settings_keyword})
         if not isinstance(payload, dict):
             return _error(422, {"errors": {"card": "設定的格式不正確。"}})
 
@@ -326,7 +329,7 @@ def build_router(default_card_for: Callable[[str], PersonaCard | None]) -> APIRo
         link_id, expires_at = resolved
         claimed = claim(t, code, expires_at)
         if not claimed.allowed:
-            return _error(401, {"error": "used"})
+            return _error(401, {"error": "used", "keyword": get_settings().settings_keyword})
         with session_module.db_session() as db:
             link, _persona, default = load(db, link_id)
             if link is None or default is None:

@@ -22,5 +22,10 @@ export default defineConfig({
   build: {
     outDir: "dist",
     sourcemap: false,
+    // 兩個頁面：設定頁（index.html → /settings）與教練回饋頁（report.html → /report），
+    // 共用同一套樣式與元件，由 FastAPI 依路徑送出（daily-coach-report-link 任務 6.3）
+    rollupOptions: {
+      input: { settings: "index.html", report: "report.html" },
+    },
   },
 });

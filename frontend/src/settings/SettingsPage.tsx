@@ -95,7 +95,7 @@ export function SettingsPage() {
   const token = params.get("t");
   // 開發模式沒有 token 時用範例資料檢視設計；?state=expired|invalid|saved 檢視各狀態
   const demo = import.meta.env.DEV && !token;
-  const [load, setLoad] = useState<{ data: SettingsData } | { failure: Failure } | null>(() =>
+  const [load, setLoad] = useState<{ data: SettingsData } | { failure: Failure; keyword?: string } | null>(() =>
     demo ? { data: sampleSettings() } : token ? null : { failure: "invalid" },
   );
 
@@ -103,7 +103,7 @@ export function SettingsPage() {
     if (demo || !token) return;
     let alive = true;
     loadSettings(token).then((result) => {
-      if (alive) setLoad(result.ok ? { data: result.data } : { failure: result.failure });
+      if (alive) setLoad(result.ok ? { data: result.data } : { failure: result.failure, keyword: result.keyword });
     });
     return () => {
       alive = false;
@@ -119,7 +119,7 @@ export function SettingsPage() {
       </Sheet>
     );
   }
-  if ("failure" in load) return <LinkProblem kind={load.failure} chatUrl={INBOX_URL} />;
+  if ("failure" in load) return <LinkProblem kind={load.failure} chatUrl={INBOX_URL} keyword={load.keyword} />;
 
   const demoState = demo ? params.get("state") : null;
   return (
@@ -256,7 +256,7 @@ function Editor({ data, token, initialStatus }: { data: SettingsData; token: str
   };
 
   if (status === "expired" || status === "invalid" || status === "used") {
-    return <LinkProblem kind={status} chatUrl={data.chatUrl} />;
+    return <LinkProblem kind={status} chatUrl={data.chatUrl} keyword={data.keyword} />;
   }
 
   if (status === "saved") {
@@ -304,7 +304,7 @@ function Editor({ data, token, initialStatus }: { data: SettingsData; token: str
       {linkExpired && (
         <p className="banner" role="alert">
           <PenLine aria-hidden size={16} strokeWidth={2} />
-          連結已過期，這次的修改存不了。回到私訊再傳一次「設定」，拿新的連結。
+          連結已過期，這次的修改存不了。回到私訊再傳一次「{data.keyword}」，拿新的連結。
         </p>
       )}
       {(notice || errors.card) && (
@@ -486,31 +486,37 @@ function Sheet({ children }: { children: React.ReactNode }) {
   return <div className="sheet">{children}</div>;
 }
 
-const PROBLEM_TEXT: Record<Failure, { title: string; body: string }> = {
-  expired: {
-    title: "這個連結已經過期",
-    body: "設定連結只有 30 分鐘有效。回到私訊再傳一次「設定」，就會拿到新的連結。",
-  },
-  used: {
-    title: "這個連結已經在別的地方打開過了",
-    body: "為了保護你的設定，每個連結只能在打開它的那個裝置上使用。回到私訊再傳一次「設定」，就會拿到新的連結。",
-  },
-  invalid: {
-    title: "這個連結打不開",
-    body: "連結可能沒有複製完整。回到私訊再傳一次「設定」，就會拿到新的連結。",
-  },
-  unavailable: {
-    title: "設定功能目前沒有開放",
-    body: "這段時間沒辦法調整角色的設定，你還是可以照常聊天。",
-  },
-  network: {
-    title: "連不上伺服器",
-    body: "確認網路沒問題後，重新整理這一頁再試一次。",
-  },
-};
+// 關鍵字由後端提供；連結無效時後端不會告訴我們（避免亂打一串就能問出關鍵字），只能說「重新要一次連結」
+const askAgain = (keyword?: string) =>
+  keyword ? `回到私訊再傳一次「${keyword}」，就會拿到新的連結。` : "回到私訊重新要一次連結就好。";
 
-function LinkProblem({ kind, chatUrl }: { kind: Failure; chatUrl: string }) {
-  const text = PROBLEM_TEXT[kind];
+const problemText = (kind: Failure, keyword?: string): { title: string; body: string } =>
+  ({
+    expired: {
+      title: "這個連結已經過期",
+      body: `設定連結只有 30 分鐘有效。${askAgain(keyword)}`,
+    },
+    used: {
+      title: "這個連結已經在別的地方打開過了",
+      body: `為了保護你的設定，每個連結只能在打開它的那個裝置上使用。${askAgain(keyword)}`,
+    },
+    invalid: {
+      title: "這個連結打不開",
+      // 無效時後端不給關鍵字；最常見的原因是連結被截斷，從原本那則訊息再點一次就好
+      body: keyword ? `連結可能沒有複製完整。${askAgain(keyword)}` : "連結可能沒有複製完整。回到私訊，從原本那則訊息再點一次。",
+    },
+    unavailable: {
+      title: "設定功能目前沒有開放",
+      body: "這段時間沒辦法調整角色的設定，你還是可以照常聊天。",
+    },
+    network: {
+      title: "連不上伺服器",
+      body: "確認網路沒問題後，重新整理這一頁再試一次。",
+    },
+  })[kind];
+
+function LinkProblem({ kind, chatUrl, keyword }: { kind: Failure; chatUrl: string; keyword?: string }) {
+  const text = problemText(kind, keyword);
   return (
     <Sheet>
       <main className="notice-page">

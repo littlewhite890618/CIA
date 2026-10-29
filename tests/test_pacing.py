@@ -289,16 +289,16 @@ def test_空內容不呼叫發訊也不送提示():
 #  7.5 × 7.8 交互：揭露必須留在第一則
 # ═══════════════════════════════════════════════════════════
 
-def test_揭露文字永遠落在第一則():
-    """若拆分把揭露推到第二則，使用者會先看到角色說話、才被告知對方是 AI。
+def test_開場問候永遠落在第一則():
+    """若拆分把開場問候推到第二則，使用者會先看到角色說話、才看到問候。
 
-    compose_reply 會在揭露文字後接單個換行再接原文，天然形成兩段，
+    compose_reply 會在開場問候後接單個換行再接原文，天然形成兩段，
     不需要額外構造帶分段的內容。
     """
     from app.personas.disclosure import compose_reply
 
-    text = compose_reply(TWO_SENTENCES, disclose=True, persona_name="晴晴")
+    text = compose_reply(TWO_SENTENCES, disclose=True, persona_name="晴晴", template="嗨，我是{name}，戀愛顧問🌿")
     for seed in range(50):
         plan = plan_reply(text, SUNNY_RUNTIME, random.Random(seed))
         head = plan.bubbles[0]
-        assert "AI" in head or "自動" in head, f"seed={seed} 的第一則不含揭露：{head!r}"
+        assert head.startswith("嗨，我是晴晴，戀愛顧問🌿"), f"seed={seed} 的第一則不是開場問候：{head!r}"

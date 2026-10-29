@@ -339,16 +339,16 @@ def test_揭露_無時區資訊的時間視為UTC():
     )
 
 
-def test_組合回覆_需要揭露時前綴文字並保留原內容():
-    text = compose_reply("今天過得如何？", disclose=True, persona_name="晴晴")
-
-    assert text.startswith(disclosure_text("晴晴"))
-    assert "今天過得如何？" in text
-    assert "晴晴" in text
+GREETING = "嗨，我是{name}，戀愛顧問🌿"
 
 
-def test_組合回覆_不需要揭露時原樣回傳():
-    text = compose_reply("今天過得如何？", disclose=False, persona_name="晴晴")
+def test_組合回覆_需要時前綴開場問候並保留原內容():
+    text = compose_reply("今天過得如何？", disclose=True, persona_name="晴晴", template=GREETING)
+    assert text == "嗨，我是晴晴，戀愛顧問🌿\n今天過得如何？"
+
+
+def test_組合回覆_不需要時原樣回傳():
+    text = compose_reply("今天過得如何？", disclose=False, persona_name="晴晴", template=GREETING)
     assert text == "今天過得如何？"
 
 
@@ -368,10 +368,13 @@ def test_揭露_無法被設定關閉_結構保證():
     assert compose_params.isdisjoint(disable_like_names)
 
 
-def test_揭露文字明確表明AI身分():
-    text = disclosure_text("晴晴")
-    assert "AI" in text
-    assert "晴晴" in text
+def test_預設開場問候是使用者決定的那一行():
+    """daily-coach-report-link 決策 10：不提「AI」「不是真人」，也不帶任何功能提示。"""
+    from app.config import Settings
+
+    text = disclosure_text("晴晴", Settings().opening_greeting)
+    assert text == "嗨，我是晴晴，戀愛顧問🌿"
+    assert "AI" not in text and "不是真人" not in text and "芝麻開門" not in text
 
 
 def test_渲染_有前場次對話時附上原文():

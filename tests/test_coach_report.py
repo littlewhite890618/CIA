@@ -24,8 +24,7 @@ from fastapi.testclient import TestClient
 
 from app.dialog.coach_report import (
     INVITE_PAYLOAD_PREFIX,
-    build_invite_buttons,
-    format_report_text,
+    display_sections,
     generate_report,
     parse_invite_payload,
     parse_report,
@@ -59,12 +58,9 @@ def sign(body: bytes, secret: str = APP_SECRET) -> str:
 # ═══════════════════════════════════════════════════════════
 
 
-def test_邀請payload的組裝與解析可還原session_id():
-    buttons = build_invite_buttons(42)
-    assert len(buttons) == 1
-    payload = buttons[0]["payload"]
-    assert payload.startswith(INVITE_PAYLOAD_PREFIX)
-    assert parse_invite_payload(payload) == 42
+def test_舊邀請按鈕的payload可解析出session_id():
+    """改版後不再送按鈕，但使用者手上的舊按鈕被點擊時仍要認得（任務 5.4）。"""
+    assert parse_invite_payload(f"{INVITE_PAYLOAD_PREFIX}42") == 42
 
 
 def test_邀請payload格式不符時回傳None():
@@ -90,15 +86,17 @@ def test_解析時不是合法JSON應拋出錯誤():
         parse_report("這不是 JSON，模型亂輸出了一段話")
 
 
-def test_format_report_text以空行分隔各段且套上中文標籤():
-    text = format_report_text(json.loads(VALID_REPORT_JSON))
-    assert "\n\n" in text
-    assert "【做得好的地方】" in text
-    assert "整體聊得很自然" in text
+def test_網頁段落套上中文標題並依內容順序():
+    sections = display_sections(json.loads(VALID_REPORT_JSON))
+    assert [s["title"] for s in sections] == [
+        "這次聊起來的感覺", "做得好的地方", "可以再調整的地方", "換個說法試試", "下次可以試試",
+    ]
+    assert "整體聊得很自然" in sections[0]["body"]
 
 
-def test_format_report_text內容為空時回傳空字串():
-    assert format_report_text({}) == ""
+def test_網頁段落內容為空時回傳空清單():
+    assert display_sections({}) == []
+    assert display_sections(None) == []
 
 
 class _FakeCoachingProvider(LLMProvider):
@@ -167,7 +165,9 @@ def test_generate_report沒有訊號時仍能產生報告():
 
 
 # ═══════════════════════════════════════════════════════════
-#  整合測試：webhook → 邀請 → 點擊 → 生成 → 送達（tasks 2.5、4.5、5.3）
+#  整合測試用的 fixture 與輔助函式
+#  （daily-coach-report-link 之後的流程測試見 tests/test_daily_digest.py、
+#   tests/test_report_api.py；舊的按鈕邀請流程已移除）
 # ═══════════════════════════════════════════════════════════
 
 
@@ -177,14 +177,16 @@ def make_client(monkeypatch, tmp_path):
         dialog_replies: list[str] | None = None,
         analysis_replies: list[str] | None = None,
         coaching_replies: list[str] | None = None,
+        links_enabled: bool = False,
     ):
         import importlib
 
         db_file = tmp_path / "test.db"
         monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_file}")
-        # 不受本機 .env 影響：設定頁功能（M13 任務 5.1）關閉
-        monkeypatch.setenv("SETTINGS_LINK_SECRET", "")
-        monkeypatch.setenv("PUBLIC_BASE_URL", "")
+        # 不受本機 .env 影響。links_enabled 才開啟設定頁與每日回饋連結
+        #（兩者共用簽章密鑰與對外網址）
+        monkeypatch.setenv("SETTINGS_LINK_SECRET", "s" * 40 if links_enabled else "")
+        monkeypatch.setenv("PUBLIC_BASE_URL", "https://example.ngrok-free.dev" if links_enabled else "")
         monkeypatch.setenv("IG_APP_SECRET", APP_SECRET)
         monkeypatch.setenv("META_APP_SECRET", "不該被用來驗章的密鑰")
         monkeypatch.setenv("META_WEBHOOK_VERIFY_TOKEN", VERIFY_TOKEN)
@@ -388,235 +390,3 @@ def _get_coach_report(main_module, session_id: int):
         if r is not None:
             db.expunge(r)
         return r
-
-
-def test_訊息足夠且靜默結束後發送邀請且僅發一次(make_client):
-    client = make_client()
-    igsid = "IGSID_INVITE_1"
-    _post(client, "mid_1", "我今天心情不太好", igsid)
-    _post(client, "mid_2", "想找人聊聊", igsid)
-
-    session_id = _backdate_session(client._main_module, igsid, minutes=30)
-    asyncio.run(client._main_module._run_silence_pass())
-
-    session = _get_session(client._main_module, session_id)
-    assert session.invite_sent is True
-
-    # 再跑一次輪詢：session 已 ENDED，find_silent_sessions 不會再選到它，
-    # 不會重複發送（沿用既有機制，這裡驗證邀請沒有被觸發第二次的副作用）。
-    asyncio.run(client._main_module._run_silence_pass())
-    session_again = _get_session(client._main_module, session_id)
-    assert session_again.invite_sent is True
-
-
-def test_互動過少不發送邀請並記錄原因(make_client):
-    client = make_client()
-    igsid = "IGSID_INVITE_2"
-    _post(client, "mid_1", "嗨", igsid)  # 只有一則，門檻設為 2
-
-    session_id = _backdate_session(client._main_module, igsid, minutes=30)
-    asyncio.run(client._main_module._run_silence_pass())
-
-    session = _get_session(client._main_module, session_id)
-    assert session.invite_sent is False
-    assert session.invite_skip_reason == "too_few_messages"
-
-
-def test_點擊邀請後生成報告並送達內容可回溯至訊號(make_client):
-    client = make_client()
-    igsid = "IGSID_CLICK_1"
-    _post(client, "mid_1", "我今天心情不太好", igsid)
-    _post(client, "mid_2", "你今天過得怎麼樣？", igsid)
-
-    # 訊號的 message_id 必須是這個 session 真實入站訊息的 id，否則
-    # parse_signals 會把它當成不合法的訊號丟棄（見 signals.py）——
-    # 訊息 id 要等實際發送過才知道，所以在建立 client 之後才回頭
-    # 把 analysis 假供應商（此時已被 llm_router 持有同一個實例）的
-    # 回覆內容換成真正引用得到的 message_id。
-    from app.db.models import Message, MessageDirection
-    from app.db.session import db_session
-
-    with db_session() as db:
-        second_inbound_id = (
-            db.query(Message.id)
-            .filter(
-                Message.platform_message_id == "mid_2",
-                Message.direction == MessageDirection.INBOUND,
-            )
-            .scalar()
-        )
-
-    signal_json = json.dumps(
-        [
-            {
-                "message_id": second_inbound_id,
-                "item": "H1",
-                "reason": "問了開放式問題「你今天過得怎麼樣？」",
-            }
-        ],
-        ensure_ascii=False,
-    )
-    analysis_provider = client._main_module.llm_router.provider_for("analysis")
-    analysis_provider._replies = ["", signal_json]
-
-    session_id = _backdate_session(client._main_module, igsid, minutes=30)
-    asyncio.run(client._main_module._run_silence_pass())
-
-    from app.dialog.coach_report import build_invite_buttons
-
-    payload = build_invite_buttons(session_id)[0]["payload"]
-    _post_postback(client, payload, igsid)
-
-    report = _get_coach_report(client._main_module, session_id)
-    assert report is not None
-    assert report.generated_at is not None
-    assert report.delivered_at is not None
-
-    # 訊號真的落庫且被讀出來、送進了 coaching 提示——這才是「可回溯至訊號」
-    # 的實際保證；FakeProvider 回的是固定 JSON，不會自己引用提示內容，
-    # 所以不能斷言在 report.content 裡，要斷言在送進模型的 system_prompt 裡。
-    coaching_calls = client._fake_coaching.calls
-    assert len(coaching_calls) == 1
-    assert "你今天過得怎麼樣" in coaching_calls[0]["system_prompt"]
-
-
-def test_重複點擊不重新生成只重送(make_client):
-    client = make_client()
-    igsid = "IGSID_CLICK_2"
-    _post(client, "mid_1", "我今天心情不太好", igsid)
-    _post(client, "mid_2", "想找人聊聊", igsid)
-
-    session_id = _backdate_session(client._main_module, igsid, minutes=30)
-    asyncio.run(client._main_module._run_silence_pass())
-
-    from app.dialog.coach_report import build_invite_buttons
-
-    payload = build_invite_buttons(session_id)[0]["payload"]
-    _post_postback(client, payload, igsid)
-    _post_postback(client, payload, igsid)
-
-    # coaching FakeProvider 只該被呼叫一次——第二次點擊直接送出既有內容
-    assert len(client._fake_coaching.calls) == 1
-
-
-def test_訊號尚未就緒時點擊不生成報告(make_client):
-    client = make_client()
-    igsid = "IGSID_CLICK_3"
-    _post(client, "mid_1", "我今天心情不太好", igsid)
-    _post(client, "mid_2", "想找人聊聊", igsid)
-
-    session_id = _backdate_session(client._main_module, igsid, minutes=30)
-
-    # 直接用一個「訊號未偵測」的假 session_id 模擬點擊邀請時訊號還沒跑完：
-    # 呼叫 _handle_coach_report_click 前先清掉 signal_status。
-    from app.db.models import Session as SessionModel, SignalStatus
-    from app.db.session import db_session
-
-    asyncio.run(client._main_module._run_silence_pass())
-    with db_session() as db:
-        s = db.get(SessionModel, session_id)
-        s.signal_status = None
-        db.flush()
-
-    from app.dialog.coach_report import build_invite_buttons
-
-    payload = build_invite_buttons(session_id)[0]["payload"]
-    _post_postback(client, payload, igsid)
-
-    report = _get_coach_report(client._main_module, session_id)
-    assert report is not None
-    assert report.generated_at is None
-    assert report.failure_reason == "signals_not_ready"
-    assert len(client._fake_coaching.calls) == 0
-
-
-def test_送達時視窗逾期保留為已生成未送達(make_client):
-    """task 4.4：不直接走點擊流程——點擊本身會重開視窗，沒辦法在同一次
-    點擊裡同時「剛生成」又「視窗已逾期」。直接呼叫 _deliver_coach_report，
-    模擬報告已生成、但負責送達的那個 session 視窗已經過期的情境。
-    """
-    client = make_client()
-    igsid = "IGSID_WINDOW_1"
-    _post(client, "mid_1", "我今天心情不太好", igsid)
-    session_id = _backdate_session(client._main_module, igsid, minutes=30)
-    asyncio.run(client._main_module._run_silence_pass())
-
-    from app.db import repository as repo
-    from app.db.session import db_session
-
-    with db_session() as db:
-        report = repo.get_or_create_coach_report(db, session_id)
-        repo.mark_report_generated(db, report, {"摘要": "測試內容", "做得好": "x", "可調整": "x", "改寫示範": "x", "下次可試": "x"})
-        s = db.get(client._main_module.SessionModel, session_id)
-        s.window_expires_at = s.window_expires_at - timedelta(hours=48)  # 讓視窗過期
-        db.flush()
-
-    asyncio.run(
-        client._main_module._deliver_coach_report(session_id, session_id, igsid)
-    )
-
-    report = _get_coach_report(client._main_module, session_id)
-    assert report.generated_at is not None, "生成的內容不能因為送達失敗被清掉"
-    assert report.delivered_at is None
-
-
-def test_傳送不相關訊息不會自動補送先前未送達的報告(make_client):
-    """task 5.1（2026-09-24 產品決策修訂）：報告與當下對話無關時突然送出
-    會讓使用者一頭霧水。改為只有使用者明確再次點擊查看回饋才補送，
-    任何其他新訊息都不該觸發。
-    """
-    client = make_client()
-    igsid = "IGSID_RESEND_1"
-    _post(client, "mid_1", "我今天心情不太好", igsid)
-    session_id = _backdate_session(client._main_module, igsid, minutes=30)
-    asyncio.run(client._main_module._run_silence_pass())
-
-    from app.db import repository as repo
-    from app.db.session import db_session
-
-    with db_session() as db:
-        report = repo.get_or_create_coach_report(db, session_id)
-        repo.mark_report_generated(
-            db,
-            report,
-            {"摘要": "測試內容", "做得好": "x", "可調整": "x", "改寫示範": "x", "下次可試": "x"},
-        )
-        # delivered_at 維持 NULL，模擬先前送達失敗
-
-    _post(client, "mid_2", "我又回來了，這跟報告完全無關", igsid)
-
-    report = _get_coach_report(client._main_module, session_id)
-    assert report.delivered_at is None, "不相關的新訊息不該觸發自動補送"
-
-
-def test_再次點擊按鈕補送先前未送達的報告(make_client):
-    """使用者主動再次點擊查看回饋，是唯一能觸發補送的途徑（task 5.1）。
-    補送不能重新呼叫模型。
-    """
-    client = make_client()
-    igsid = "IGSID_RESEND_2"
-    _post(client, "mid_1", "我今天心情不太好", igsid)
-    session_id = _backdate_session(client._main_module, igsid, minutes=30)
-    asyncio.run(client._main_module._run_silence_pass())
-
-    from app.db import repository as repo
-    from app.db.session import db_session
-
-    with db_session() as db:
-        report = repo.get_or_create_coach_report(db, session_id)
-        repo.mark_report_generated(
-            db,
-            report,
-            {"摘要": "測試內容", "做得好": "x", "可調整": "x", "改寫示範": "x", "下次可試": "x"},
-        )
-        # delivered_at 維持 NULL，模擬先前送達失敗
-
-    from app.dialog.coach_report import build_invite_buttons
-
-    payload = build_invite_buttons(session_id)[0]["payload"]
-    _post_postback(client, payload, igsid)
-
-    report = _get_coach_report(client._main_module, session_id)
-    assert report.delivered_at is not None
-    # 補送不能重新呼叫模型——generated_at 早就有值，already_generated 分支跳過生成
-    assert len(client._fake_coaching.calls) == 0

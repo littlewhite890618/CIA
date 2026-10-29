@@ -155,16 +155,16 @@ def _token_from(text: str) -> str:
     return parse_qs(urlparse(url).query)["t"][0]
 
 
-def test_第一則就傳設定_回覆連結且帶AI揭露不呼叫LLM(enabled_client):
+def test_第一則就傳關鍵字_回覆連結且帶開場問候不呼叫LLM(enabled_client):
     client = enabled_client()
     igsid = "IGSID_SET_FIRST"
-    resp = _post(client, "mid_1", "設定", igsid)
+    resp = _post(client, "mid_1", "芝麻開門", igsid)
     assert resp.status_code == 200
 
     assert client._fake_provider.calls == []  # 系統回覆，不是角色在聊天
 
     [text] = _outbound_texts(client._main_module, igsid)
-    assert "AI" in text and "晴晴" in text  # 新對話的第一則回覆必須揭露
+    assert text.startswith("嗨，我是晴晴，戀愛顧問🌿\n")  # 新對話的第一則回覆加上開場問候
     assert verify_token(_token_from(text), secret=SECRET) == _link_id(igsid)
 
 
@@ -172,7 +172,7 @@ def test_聊天中傳設定_不重複揭露(enabled_client):
     client = enabled_client(replies=["嗨呀。"])
     igsid = "IGSID_SET_MID"
     _post(client, "mid_1", "嗨", igsid)
-    _post(client, "mid_2", " 設定 ", igsid)  # 前後空白仍算關鍵字
+    _post(client, "mid_2", " 芝麻開門 ", igsid)  # 前後空白仍算關鍵字
 
     texts = _outbound_texts(client._main_module, igsid)
     assert len(client._fake_provider.calls) == 1
@@ -181,10 +181,22 @@ def test_聊天中傳設定_不重複揭露(enabled_client):
     assert "AI" not in link_reply
 
 
+def test_舊關鍵字設定當一般訊息(enabled_client):
+    """2026-10-21 關鍵字改為「芝麻開門」，「設定」改由角色正常回覆。"""
+    client = enabled_client(replies=["嗨呀。", "你想設定什麼呢？"])
+    igsid = "IGSID_OLD_KEYWORD"
+    _post(client, "mid_1", "嗨", igsid)
+    _post(client, "mid_2", "設定", igsid)
+
+    assert len(client._fake_provider.calls) == 2
+    assert client._fake_provider.calls[-1]["messages"][-1].content == "設定"
+    assert not any("/settings?t=" in t for t in _outbound_texts(client._main_module, igsid))
+
+
 def test_連結綁定各自的使用者(enabled_client):
     client = enabled_client()
-    _post(client, "mid_a", "設定", "IGSID_SET_A")
-    _post(client, "mid_b", "設定", "IGSID_SET_B")
+    _post(client, "mid_a", "芝麻開門", "IGSID_SET_A")
+    _post(client, "mid_b", "芝麻開門", "IGSID_SET_B")
 
     token_a = _token_from(_outbound_texts(client._main_module, "IGSID_SET_A")[0])
     token_b = _token_from(_outbound_texts(client._main_module, "IGSID_SET_B")[0])
@@ -201,7 +213,7 @@ def test_含有關鍵字的一般句子不算(enabled_client):
 
 def test_功能未啟用時設定當一般訊息處理(make_client):
     client = make_client(replies=["嗯嗯，想設定什麼呢？"])
-    _post(client, "mid_1", "設定", "IGSID_SET_OFF")
+    _post(client, "mid_1", "芝麻開門", "IGSID_SET_OFF")
 
     assert len(client._fake_provider.calls) == 1
     texts = _outbound_texts(client._main_module, "IGSID_SET_OFF")
@@ -212,12 +224,12 @@ def test_設定與連結不進入之後的對話上下文(enabled_client):
     client = enabled_client(replies=["嗨呀。", "我在呀。"])
     igsid = "IGSID_SET_CONTEXT"
     _post(client, "mid_1", "嗨", igsid)
-    _post(client, "mid_2", "設定", igsid)
+    _post(client, "mid_2", "芝麻開門", igsid)
     _post(client, "mid_3", "在嗎", igsid)
 
     contents = [m.content for m in client._fake_provider.calls[-1]["messages"]]
     assert "嗨" in contents and "在嗎" in contents
-    assert "設定" not in contents
+    assert "芝麻開門" not in contents
     assert not any("/settings?t=" in c for c in contents)
 
 
@@ -225,7 +237,7 @@ def test_設定與連結不進入訊號偵測與話題萃取(enabled_client):
     client = enabled_client(replies=["你週末喜歡做什麼呢？"])
     igsid = "IGSID_SET_SIGNALS"
     _post(client, "mid_1", "嗨嗨", igsid)
-    _post(client, "mid_2", "設定", igsid)
+    _post(client, "mid_2", "芝麻開門", igsid)
 
     _backdate_session(client._main_module, igsid, minutes=30)
     asyncio.run(client._main_module._run_silence_pass())
@@ -251,7 +263,7 @@ def test_延遲期間傳設定_不丟棄準備中的回覆(enabled_client, monke
         nonlocal triggered
         if not triggered:
             triggered = True
-            await _simulate_inbound_during_delay(client._main_module, "mid_settings", "設定", igsid)
+            await _simulate_inbound_during_delay(client._main_module, "mid_settings", "芝麻開門", igsid)
 
     monkeypatch.setattr(delivery_module, "DEFAULT_SLEEP", _sleep_then_ask_for_settings)
     _post(client, "mid_first", "我今天有點累", igsid)
@@ -261,55 +273,21 @@ def test_延遲期間傳設定_不丟棄準備中的回覆(enabled_client, monke
     assert any("/settings?t=" in t for t in texts)
 
 
-HINT = "想調整我的個性，隨時傳「設定」給我就好"
-
-
-def test_提示_新對話揭露時附上設定提示(enabled_client):
-    """任務 5.5：讓新使用者知道可以傳「設定」。"""
+def test_開場問候不帶任何功能提示(enabled_client):
+    """daily-coach-report-link 決策 10：拿掉「想調整我的個性，隨時傳…」的提示。"""
     client = enabled_client(replies=["嗨呀，今天過得好嗎？"])
-    _post(client, "mid_1", "嗨", "IGSID_HINT_NEW")
+    _post(client, "mid_1", "嗨", "IGSID_GREETING")
 
-    joined = "\n".join(_outbound_texts(client._main_module, "IGSID_HINT_NEW"))
-    assert "AI" in joined
-    assert HINT in joined
-    assert joined.index("AI") < joined.index(HINT) < joined.index("今天過得好嗎")
-
-
-def test_提示_同一場後續回覆不再附上(enabled_client):
-    client = enabled_client(replies=["嗨呀。", "我在呀。"])
-    igsid = "IGSID_HINT_LATER"
-    _post(client, "mid_1", "嗨", igsid)
-    _post(client, "mid_2", "在嗎", igsid)
-
-    texts = _outbound_texts(client._main_module, igsid)
-    assert sum(HINT in t for t in texts) == 1
-
-
-def test_提示_功能未啟用時不附上(make_client):
-    """沒有設定頁就不能叫使用者傳「設定」，否則傳了只會得到一般回覆。"""
-    client = make_client(replies=["嗨呀。"])
-    _post(client, "mid_1", "嗨", "IGSID_HINT_OFF")
-
-    joined = "\n".join(_outbound_texts(client._main_module, "IGSID_HINT_OFF"))
-    assert "AI" in joined
-    assert HINT not in joined
-
-
-def test_提示_設定連結那則不附上提示(enabled_client):
-    """已經在要連結了，不必再提示他可以傳「設定」。"""
-    client = enabled_client()
-    _post(client, "mid_1", "設定", "IGSID_HINT_LINK")
-
-    [text] = _outbound_texts(client._main_module, "IGSID_HINT_LINK")
-    assert "AI" in text
-    assert HINT not in text
+    # 開場問候與回覆可能被擬真節奏拆成兩則泡泡，合起來看
+    joined = "\n".join(_outbound_texts(client._main_module, "IGSID_GREETING"))
+    assert joined == "嗨，我是晴晴，戀愛顧問🌿\n嗨呀，今天過得好嗎？"
 
 
 def test_重送的設定事件不重複發連結(enabled_client):
     """Meta 重送同一事件時由 platform_message_id 去重，與一般訊息相同。"""
     client = enabled_client()
     igsid = "IGSID_SET_DUP"
-    _post(client, "mid_dup", "設定", igsid)
-    _post(client, "mid_dup", "設定", igsid)
+    _post(client, "mid_dup", "芝麻開門", igsid)
+    _post(client, "mid_dup", "芝麻開門", igsid)
 
     assert len(_outbound_texts(client._main_module, igsid)) == 1

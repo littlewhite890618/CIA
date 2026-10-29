@@ -22,7 +22,7 @@ from app.db.models import Base, Message, MessageDirection, Severity, SignalType
 from app.dialog.coach_report import (
     REPORT_SECTIONS,
     build_system_prompt as build_report_prompt,
-    format_report_text,
+    display_sections,
     generate_report,
     parse_report,
     report_sections,
@@ -222,11 +222,11 @@ def test_取消的段落不寫也不送出():
 
     keys = [s.key for s in report_sections(coaching)]
     content = parse_report(json.dumps(FIVE, ensure_ascii=False), keys)
-    text = format_report_text(content)
+    titles = [s["title"] for s in display_sections(content)]
 
     assert list(content) == ["摘要", "做得好", "可調整", "改寫示範"]
-    assert "下次可以試試" not in text
-    assert "【這次聊起來的感覺】" in text
+    assert "下次可以試試" not in titles
+    assert titles[0] == "這次聊起來的感覺"
 
 
 def test_自訂段落以標題為鍵並照設定順序顯示():
@@ -239,8 +239,8 @@ def test_自訂段落以標題為鍵並照設定順序顯示():
     assert "4. 她可能在想什麼：從她的角度看這段對話" in prompt
 
     content = parse_report(json.dumps({k: f"{k}…" for k in keys}, ensure_ascii=False), keys)
-    text = format_report_text(content)
-    assert text.index("【可以再調整的地方】") < text.index("【她可能在想什麼】")
+    titles = [s["title"] for s in display_sections(content)]
+    assert titles.index("可以再調整的地方") < titles.index("她可能在想什麼")
 
 
 def test_自訂段落標題與預設段落的鍵相同時加上編號():
@@ -274,10 +274,10 @@ def test_generate_report依設定生成且只有預設時維持原本的輸出�
 
 
 def test_舊報告的內容格式照常顯示():
-    """導入前存下的報告是固定五段的鍵，送達時照樣換成中文標題。"""
-    text = format_report_text(FIVE)
-    assert text.startswith("【這次聊起來的感覺】\n摘要的內容")
-    assert "【下次可以試試】" in text
+    """導入前存下的報告是固定五段的鍵，網頁上照樣換成中文標題。"""
+    sections = display_sections(FIVE)
+    assert sections[0] == {"title": "這次聊起來的感覺", "body": "摘要的內容"}
+    assert sections[-1]["title"] == "下次可以試試"
 
 
 # ═══════════════════════════════════════════════════════════
@@ -337,7 +337,7 @@ def test_教練設定只屬於該使用者(db):
 
 
 # ═══════════════════════════════════════════════════════════
-#  整合：私訊 → 靜默結束 → 點擊邀請 → 報告依使用者設定
+#  整合：私訊 → 靜默結束 → 產生報告（打開回饋連結時）→ 報告依使用者設定
 # ═══════════════════════════════════════════════════════════
 
 from tests.test_coach_report import (  # noqa: E402,F401  (make_client 為 fixture)
@@ -345,18 +345,17 @@ from tests.test_coach_report import (  # noqa: E402,F401  (make_client 為 fixtu
     _backdate_session,
     _get_coach_report,
     _post as _post_message,
-    _post_postback,
     make_client,
 )
 
 
-def test_取消段落後點擊邀請收到的報告沒有該段落(make_client):
+def test_取消段落後產生的報告沒有該段落(make_client):
     """真機回報的問題：設定頁取消「下次可以試試」，報告仍出現這一段。
     假模型照樣回五段，送出的報告也只能有四段。同時停用 L4，確認 session
     結束時的訊號偵測也讀到了同一份設定。"""
     from app.db.models import Persona, UserPersonaLink
     from app.db.session import db_session
-    from app.dialog.coach_report import build_invite_buttons
+    from app.dialog.report_service import READY, generate_session_report
 
     client = make_client()
     igsid = "IGSID_COACHING_1"
@@ -379,12 +378,13 @@ def test_取消段落後點擊邀請收到的報告沒有該段落(make_client):
 
     session_id = _backdate_session(client._main_module, igsid, minutes=30)
     asyncio.run(client._main_module._run_silence_pass())
-    _post_postback(client, build_invite_buttons(session_id)[0]["payload"], igsid)
+    # 回饋網頁打開時呼叫的就是這個（app/web/report_api.py）
+    result = asyncio.run(generate_session_report(client._main_module.llm_router, session_id))
 
+    assert result.status == READY
     report = _get_coach_report(client._main_module, session_id)
-    assert report.delivered_at is not None
     assert list(report.content) == ["摘要", "做得好", "可調整", "改寫示範"]
-    assert "下次可以試試" not in format_report_text(report.content)
+    assert "下次可以試試" not in [s["title"] for s in display_sections(report.content)]
     assert "下次可試" not in client._fake_coaching.calls[0]["system_prompt"]
 
     signal_prompt = client._main_module.llm_router.provider_for("analysis").calls[-1]["system_prompt"]

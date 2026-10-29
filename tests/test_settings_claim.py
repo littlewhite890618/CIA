@@ -35,7 +35,7 @@ def _other_browser(client) -> None:
 
 
 def _is_used(resp) -> bool:
-    return resp.status_code == 401 and resp.json() == {"error": "used"}
+    return resp.status_code == 401 and resp.json() == {"error": "used", "keyword": "芝麻開門"}
 
 
 # ═══════════════════════════════════════════════════════════
@@ -120,7 +120,7 @@ def test_過期或無效的連結不會登記(api):
     client, _ = api
     link_id = _link_id("IGSID_API")
     expired = issue_token(link_id, secret=SECRET, ttl_seconds=-10)
-    assert _get(client, expired).json() == {"error": "expired"}
+    assert _get(client, expired).json() == {"error": "expired", "keyword": "芝麻開門"}
     assert _get(client, "garbage.token").json() == {"error": "invalid"}
 
     from app.db.session import db_session

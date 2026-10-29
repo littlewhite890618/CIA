@@ -103,7 +103,8 @@ def test_過期的連結(api):
     token = issue_token(_link_id("IGSID_API"), secret=SECRET, ttl_seconds=60, now=past)
     resp = _get(client, token)
     assert resp.status_code == 401
-    assert resp.json() == {"error": "expired"}
+    # 簽章正確的過期連結：持有者本來就拿過連結，告訴他要傳哪個關鍵字
+    assert resp.json() == {"error": "expired", "keyword": "芝麻開門"}
 
 
 @pytest.mark.parametrize("token", ["", "garbage", "a.b"])

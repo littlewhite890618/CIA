@@ -16,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DBSession
 
 from app.db.models import (
+    CoachDigest,
     SendError,
     CoachReport,
     Message,
@@ -801,3 +802,90 @@ def failed_coach_report_session_ids(db: DBSession) -> list[int]:
             .order_by(CoachReport.session_id)
         )
     )
+
+
+# ═══════════════════════════════════════════════════════════
+#  每日回饋（daily-coach-report-link 任務 3.2，design.md 決策 1、2、3）
+# ═══════════════════════════════════════════════════════════
+
+
+def pending_digest_sessions(db: DBSession, before: datetime) -> list[Session]:
+    """已在 before 之前結束、還沒處理過的場次，依結束時間排序。
+
+    「處理過」：已併入每日回饋（coach_digest_id）、改版前已用按鈕邀請過
+    （invite_sent），或記過略過原因（互動不足、改版前的舊場次等）。
+    """
+    return list(
+        db.scalars(
+            select(Session)
+            .where(
+                Session.state == SessionState.ENDED,
+                Session.ended_at <= before,
+                Session.coach_digest_id.is_(None),
+                Session.invite_sent.is_(False),
+                Session.invite_skip_reason.is_(None),
+            )
+            .order_by(Session.ended_at, Session.id)
+        )
+    )
+
+
+def inbound_chat_count(db: DBSession, session_id: int) -> int:
+    """場次中使用者傳的聊天訊息數（不含關鍵字這類系統訊息），用於互動下限。"""
+    rows = db.scalars(
+        select(Message).where(
+            Message.session_id == session_id, Message.direction == MessageDirection.INBOUND
+        )
+    )
+    return sum(1 for m in rows if not is_system_message(m) and m.content and m.content.strip())
+
+
+def create_digest(db: DBSession, link: UserPersonaLink, sessions: list[Session]) -> CoachDigest:
+    """建立一則每日回饋，並把場次掛上去（掛上即視為已處理，之後不會再被撈到）。"""
+    digest = CoachDigest(link_id=link.id)
+    db.add(digest)
+    db.flush()
+    for session in sessions:
+        session.coach_digest_id = digest.id
+    db.flush()
+    return digest
+
+
+def mark_digest_sent(db: DBSession, digest: CoachDigest) -> None:
+    digest.sent_at = utcnow()
+    digest.skip_reason = None
+    db.flush()
+
+
+def mark_digest_skipped(db: DBSession, digest: CoachDigest, reason: str) -> None:
+    digest.skip_reason = reason[:64]
+    db.flush()
+
+
+def digest_sessions(db: DBSession, digest_id: int) -> list[Session]:
+    """每日回饋涵蓋的場次，依開始時間先後。"""
+    return list(
+        db.scalars(
+            select(Session)
+            .where(Session.coach_digest_id == digest_id)
+            .order_by(Session.started_at, Session.id)
+        )
+    )
+
+
+def latest_session_for_link(db: DBSession, link: UserPersonaLink) -> Session | None:
+    """這位使用者與這個角色最新的一段對話；送出每日回饋時用它的 24 小時視窗。"""
+    return db.scalar(
+        select(Session)
+        .where(Session.user_id == link.user_id, Session.persona_id == link.persona_id)
+        .order_by(Session.started_at.desc(), Session.id.desc())
+        .limit(1)
+    )
+
+
+def get_digest(db: DBSession, digest_id: int) -> CoachDigest | None:
+    return db.get(CoachDigest, digest_id)
+
+
+def get_link_by_id(db: DBSession, link_id: int) -> UserPersonaLink | None:
+    return db.get(UserPersonaLink, link_id)

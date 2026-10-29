@@ -52,4 +52,6 @@ export interface SettingsData {
   current: { card: Card; coaching: Coaching };
   /** 「絕不接」中使用者不可移除的系統底線 */
   baselineNeverEngages: string[];
+  /** 在私訊中取得設定連結的關鍵字（目前是「芝麻開門」） */
+  keyword: string;
 }

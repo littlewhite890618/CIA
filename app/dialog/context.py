@@ -19,9 +19,8 @@ _ROLE_MAP = {
 def build_context(messages: list[Message]) -> list[LLMMessage]:
     """把最近訊息轉換成 LLM 對話歷史，順序原樣保留（呼叫端已依時間排序）。
 
-    出站訊息若帶有 7.5 的揭露文字前綴（見 disclosure.compose_reply），
-    會原樣留在歷史裡——這正是我們要的：讓模型「記得」自己說過什麼，
-    包含開場揭露，不必特別過濾。
+    出站訊息若帶有開場問候（見 disclosure.compose_reply），會原樣留在歷史裡
+    ——這正是我們要的：讓模型「記得」自己說過什麼，包含開場問候，不必特別過濾。
     """
     return [
         LLMMessage(role=_ROLE_MAP[m.direction], content=m.content)

@@ -212,7 +212,21 @@ class Settings(BaseSettings):
     settings_link_ttl_seconds: int = Field(
         default=1800, description="設定頁連結的有效秒數，逾時需重新在私訊傳關鍵字"
     )
-    settings_keyword: str = Field(default="設定", description="取得設定頁連結的私訊關鍵字")
+    settings_keyword: str = Field(default="芝麻開門", description="取得設定頁連結的私訊關鍵字")
+
+    # daily-coach-report-link 任務 8.1：每段新對話開頭的問候，{name} 會換成角色名字。
+    # 2026-10-21 使用者決定不提「AI」（design.md 決策 10）；要恢復揭露就改這裡
+    opening_greeting: str = Field(
+        default="嗨，我是{name}，戀愛顧問🌿", description="新對話開頭的問候，{name} 換成角色名字"
+    )
+
+    # ── 每日教練回饋（daily-coach-report-link）──
+    # 對話結束後不再馬上發邀請，改在每天 coach_digest_time（coach_digest_timezone）
+    # 把這段期間結束的對話合併成一則連結送出。連結共用 settings_link_secret 簽章，
+    # 用途前綴不同；功能是否啟用與設定頁相同（密鑰與對外網址都要有）
+    coach_digest_time: str = Field(default="04:00", description="每天送出教練回饋連結的時刻（HH:MM）")
+    coach_digest_timezone: str = Field(default="Asia/Taipei", description="送出時刻所用的時區")
+    coach_report_link_ttl_days: int = Field(default=7, ge=1, description="教練回饋連結的有效天數")
 
     # ── 後台登入（任務 5.2、5.3）──
     login_session_ttl_seconds: int = Field(
@@ -246,6 +260,28 @@ class Settings(BaseSettings):
     @classmethod
     def _upper_log_level(cls, v: str) -> str:
         return v.upper()
+
+    @field_validator("coach_digest_time")
+    @classmethod
+    def _check_digest_time(cls, v: str) -> str:
+        try:
+            hour, minute = (int(x) for x in v.split(":"))
+        except ValueError as exc:
+            raise ValueError("COACH_DIGEST_TIME 的格式是 HH:MM，例如 04:00") from exc
+        if not (0 <= hour < 24 and 0 <= minute < 60):
+            raise ValueError("COACH_DIGEST_TIME 的格式是 HH:MM，例如 04:00")
+        return f"{hour:02d}:{minute:02d}"
+
+    @field_validator("coach_digest_timezone")
+    @classmethod
+    def _check_digest_timezone(cls, v: str) -> str:
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+        try:
+            ZoneInfo(v)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError(f"COACH_DIGEST_TIMEZONE 不是有效的時區：{v}") from exc
+        return v
 
     @model_validator(mode="after")
     def _check_summary_window(self) -> "Settings":

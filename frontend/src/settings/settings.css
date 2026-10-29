@@ -83,7 +83,7 @@ button {
   flex-direction: column;
 }
 
-/* 頁邊的紅線 */
+/* 頁邊線（淺藍） */
 .sheet::before {
   content: "";
   position: absolute;

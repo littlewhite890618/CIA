@@ -25,6 +25,7 @@ from app.db import repository as repo
 from app.db.models import Message, MessageDirection
 from app.db.models import Session as SessionModel
 from app.db.session import db_session
+from app.dialog.traditional import LANGUAGE_RULE, to_traditional
 from app.llm import LLMError, LLMMessage
 from app.llm.router import LLMRouter
 from app.logging_config import get_logger
@@ -44,7 +45,8 @@ _SYSTEM_PROMPT = (
     "- 角色說過關於自己的事（住哪、在忙什麼、喜歡什麼）也要記，避免之後前後矛盾\n"
     "- 使用者提過的人名、地點、時間、正在發生的事要保留細節\n"
     "- 有先前的摘要時，把新內容併進去；舊摘要裡的事除非被新對話推翻，否則保留\n"
-    f"- 條列，每行一點，用「使用者」「角色」稱呼雙方，總長不超過 {MAX_SUMMARY_CHARS} 字\n\n"
+    f"- 條列，每行一點，用「使用者」「角色」稱呼雙方，總長不超過 {MAX_SUMMARY_CHARS} 字\n"
+    f"- {LANGUAGE_RULE}\n\n"
     "只輸出摘要本身，不要標題或說明。"
 )
 
@@ -113,7 +115,7 @@ async def summarize(
     except Exception:
         log.exception("對話摘要發生未預期例外")
         return None
-    text = response.text.strip()
+    text = to_traditional(response.text.strip())  # 任務 2.3
     return text or None
 
 

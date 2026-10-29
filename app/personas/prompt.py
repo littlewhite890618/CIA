@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 from app.personas.schema import PersonaPromptFields
+from app.dialog.traditional import LANGUAGE_RULE
 
 
 def render_system_prompt(
@@ -40,6 +41,7 @@ def render_system_prompt(
         "接下來你要以這個角色的身分和使用者對話，語氣與反應都要維持一致。"
         "稱呼對方一律用「你」，不要用「妳」——「妳」是用來稱呼女性對象的字，"
         "而你聊天的對象是男性使用者。"
+        + LANGUAGE_RULE
     )
 
     lines += ["", "【近況】", background.recent_life]

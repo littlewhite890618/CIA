@@ -16,8 +16,9 @@ token 格式：<payload>.<簽章>，兩段皆為 base64url（無補位）
   某位使用者是否存在（tenant-access spec「竄改連結」）
 - 簽章通過才判斷是否過期，所以「已過期」只會對自己的真連結出現，
   可以放心提示使用者重新傳「設定」
-- 簽章內容含用途前綴：日後若有其他種連結共用同一把密鑰，也無法拿
-  這裡的 token 去冒充
+- 簽章內容含用途前綴：教練回饋連結（daily-coach-report-link 任務 4.1）
+  共用同一把密鑰與同一套格式，但前綴不同，兩種 token 互相無法冒用。
+  回饋連結的 payload 綁的是每日回饋的 id（coach_digests.id），不是 link_id
 """
 
 from __future__ import annotations
@@ -28,7 +29,8 @@ import hmac
 from datetime import datetime, timezone
 
 MIN_SECRET_LENGTH = 32
-_PURPOSE = b"settings-link:v1|"
+SETTINGS_PURPOSE = b"settings-link:v1|"
+REPORT_PURPOSE = b"coach-report:v1|"
 
 
 class SettingsLinkError(Exception):
@@ -57,31 +59,42 @@ def _check_secret(secret: str) -> bytes:
     return secret.encode("utf-8")
 
 
-def _sign(key: bytes, payload_b64: str) -> str:
-    return _b64encode(hmac.new(key, _PURPOSE + payload_b64.encode("ascii"), hashlib.sha256).digest())
+def _sign(key: bytes, payload_b64: str, purpose: bytes) -> str:
+    return _b64encode(hmac.new(key, purpose + payload_b64.encode("ascii"), hashlib.sha256).digest())
 
 
 def _now_ts(now: datetime | None) -> int:
     return int((now or datetime.now(timezone.utc)).timestamp())
 
 
-def issue_token(link_id: int, *, secret: str, ttl_seconds: int, now: datetime | None = None) -> str:
-    """簽發一個綁定 link_id（使用者 × 共用角色）的 token。"""
+def issue_token(
+    link_id: int,
+    *,
+    secret: str,
+    ttl_seconds: int,
+    now: datetime | None = None,
+    purpose: bytes = SETTINGS_PURPOSE,
+) -> str:
+    """簽發一個綁定 link_id（使用者 × 共用角色；回饋連結則為每日回饋 id）的 token。"""
     key = _check_secret(secret)
     expires_at = _now_ts(now) + ttl_seconds
     payload_b64 = _b64encode(f"{link_id}.{expires_at}".encode("ascii"))
-    return f"{payload_b64}.{_sign(key, payload_b64)}"
+    return f"{payload_b64}.{_sign(key, payload_b64, purpose)}"
 
 
-def verify_token(token: str, *, secret: str, now: datetime | None = None) -> int:
+def verify_token(
+    token: str, *, secret: str, now: datetime | None = None, purpose: bytes = SETTINGS_PURPOSE
+) -> int:
     """驗證 token，回傳 link_id。
 
     簽章不符或格式錯誤拋 SettingsLinkInvalid；簽章正確但過期拋 SettingsLinkExpired。
     """
-    return verify_token_with_expiry(token, secret=secret, now=now)[0]
+    return verify_token_with_expiry(token, secret=secret, now=now, purpose=purpose)[0]
 
 
-def verify_token_with_expiry(token: str, *, secret: str, now: datetime | None = None) -> tuple[int, int]:
+def verify_token_with_expiry(
+    token: str, *, secret: str, now: datetime | None = None, purpose: bytes = SETTINGS_PURPOSE
+) -> tuple[int, int]:
     """同 verify_token，另外回傳到期時間（unix 秒），供設定頁顯示剩餘時間。"""
     key = _check_secret(secret)
 
@@ -92,7 +105,7 @@ def verify_token_with_expiry(token: str, *, secret: str, now: datetime | None = 
         raise SettingsLinkInvalid("連結無效")
     payload_b64, signature = parts
 
-    if not hmac.compare_digest(_sign(key, payload_b64), signature):
+    if not hmac.compare_digest(_sign(key, payload_b64, purpose), signature):
         raise SettingsLinkInvalid("連結無效")
 
     try:
@@ -109,3 +122,7 @@ def verify_token_with_expiry(token: str, *, secret: str, now: datetime | None = 
 
 def build_settings_url(base_url: str, token: str) -> str:
     return f"{base_url.rstrip('/')}/settings?t={token}"
+
+
+def build_report_url(base_url: str, token: str) -> str:
+    return f"{base_url.rstrip('/')}/report?t={token}"

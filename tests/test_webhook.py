@@ -358,6 +358,7 @@ def _outbound_messages(igsid: str) -> list:
 
 def test_揭露_首次對話outbound內容包含揭露文字(client):
     import app.main as main_module
+    from app.config import Settings
     from app.personas.disclosure import disclosure_text
 
     igsid = "IGSID_DISCLOSE_1"
@@ -372,7 +373,7 @@ def test_揭露_首次對話outbound內容包含揭露文字(client):
 
     # 揭露與回覆內容各自是一句，會被拆成兩則送出；揭露必須在第一則
     assert 1 <= len(outbound) <= 2
-    assert outbound[0].startswith(disclosure_text(persona_name))
+    assert outbound[0].startswith(disclosure_text(persona_name, Settings().opening_greeting))
 
 
 def test_揭露_短時間內第二則不重複揭露(client):
@@ -392,15 +393,16 @@ def test_揭露_短時間內第二則不重複揭露(client):
     assert resp.status_code == 200
 
     import app.main as main_module
+    from app.config import Settings
     from app.personas.disclosure import disclosure_text
 
     persona_name = main_module.persona_cards["sunny"].identity.name
     outbound = _outbound_messages(igsid)
 
     assert len(outbound) >= 2
-    assert outbound[0].startswith(disclosure_text(persona_name)), "第一則必須揭露"
+    assert outbound[0].startswith(disclosure_text(persona_name, Settings().opening_greeting)), "第一則必須揭露"
     assert not any(
-        m.startswith(disclosure_text(persona_name)) for m in outbound[1:]
+        m.startswith(disclosure_text(persona_name, Settings().opening_greeting)) for m in outbound[1:]
     ), "短時間內的第二則不該重複揭露"
 
 

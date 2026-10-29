@@ -84,7 +84,8 @@ class SystemMessageKind:
     「是否互動過」檢查通過），但不進入對話上下文、話題萃取、訊號偵測
     與插話判定——見 repository.recent_messages 等函式與 design.md 決策 14。
     """
-    SETTINGS_LINK = "settings_link"  # 使用者傳「設定」與系統回覆的設定頁連結
+    SETTINGS_LINK = "settings_link"  # 使用者傳關鍵字與系統回覆的設定頁連結
+    COACH_DIGEST = "coach_digest"  # 凌晨送出的教練回饋連結（daily-coach-report-link）
 
 
 class SessionState:
@@ -418,6 +419,13 @@ class Session(Base):
         comment="摘要涵蓋到哪一則訊息（含）。之後的訊息以原文放進上下文",
     )
 
+    # daily-coach-report-link 任務 3.1：這段對話被併入哪一則每日回饋。
+    # 有值就代表已處理過，之後的每日送出不再撈它
+    coach_digest_id: Mapped[int | None] = mapped_column(
+        ForeignKey("coach_digests.id"), index=True,
+        comment="併入的每日回饋；NULL 表示尚未送出",
+    )
+
 
 class Message(Base):
     """單則訊息。入站與出站共用此表，以 direction 區分。"""
@@ -582,4 +590,25 @@ class SettingsLinkClaim(Base):
     claimed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), index=True, comment="連結到期時間，過期一陣子後清除"
+    )
+
+
+class CoachDigest(Base):
+    """一則每日回饋訊息（daily-coach-report-link 任務 3.1，design.md 決策 1）。
+
+    凌晨送出時，同一位使用者在這之前結束、尚未送過的對話合併成一列；
+    場次以 sessions.coach_digest_id 指向它。報告本身仍是每段對話一列，
+    存在 coach_reports，要等使用者打開連結才產生。
+    """
+
+    __tablename__ = "coach_digests"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    link_id: Mapped[int] = mapped_column(ForeignKey("user_persona_links.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), comment="連結訊息實際送出的時刻；未送出為 NULL"
+    )
+    skip_reason: Mapped[str | None] = mapped_column(
+        String(64), comment="未能送出的原因（例如訊息視窗已逾期）"
     )

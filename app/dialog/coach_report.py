@@ -19,6 +19,7 @@ from typing import Any
 
 from app.db.models import RealtimeSignal, SignalType
 from app.llm import LLMError, LLMMessage
+from app.dialog.traditional import LANGUAGE_RULE, to_traditional
 from app.llm.router import LLMRouter
 from app.logging_config import get_logger
 from app.personas.coaching_settings import DEFAULT_LENGTH, DEFAULT_TONE, default_coaching
@@ -57,25 +58,11 @@ _SECTION_DISPLAY_LABEL = {
 # 該研究文件的判斷應是把 Messenger 平台的 Quick Reply（確實支援桌面）與
 # Instagram 平台的搞混——兩者 API 形狀相似但實際支援的元件不同。
 
+# daily-coach-report-link：不再送出按鈕邀請（改為凌晨送出回饋連結），但使用者手上
+# 仍有先前送出的按鈕，點擊時要認得它的 payload，改回覆連結（app/main.py
+# 的 _handle_old_invite_click）。按鈕文字是點擊時補記的那則系統訊息內容。
 INVITE_PAYLOAD_PREFIX = "COACH_REPORT_VIEW:"
-INVITE_MESSAGE_TEXT = "今天聊得怎麼樣？想看看這次對話的小回饋嗎？"
 INVITE_BUTTON_TITLE = "看這次的回饋"
-
-
-def build_invite_buttons(session_id: int) -> list[dict[str, str]]:
-    """組出邀請訊息的按鈕，payload 帶著這個已結束的 session_id。
-
-    使用者點擊時是以「新的一次互動」重開視窗，可能建立一個全新的 session；
-    這裡帶的 session_id 是「產生邀請的那一場」，用來找到對應的訊號與報告，
-    與點擊當下的 session 是兩回事（見 app/main.py 的說明）。
-    """
-    return [
-        {
-            "type": "postback",
-            "title": INVITE_BUTTON_TITLE,
-            "payload": f"{INVITE_PAYLOAD_PREFIX}{session_id}",
-        }
-    ]
 
 
 def parse_invite_payload(payload: str | None) -> int | None:
@@ -108,7 +95,7 @@ def report_sections(coaching: Mapping[str, Any] | None) -> list[ReportSection]:
 
     預設段落沿用原本的鍵（摘要、做得好…），顯示時由 _SECTION_DISPLAY_LABEL
     換成標題，舊報告與新報告格式一致。自訂段落以標題當鍵：
-    format_report_text 只拿得到報告內容，鍵本身就得是能直接顯示的標題。
+    display_sections 只拿得到報告內容，鍵本身就得是能直接顯示的標題。
     """
     raw = (coaching or {}).get("reportSections") or []
     sections: list[ReportSection] = []
@@ -188,6 +175,7 @@ def _build_custom_prompt(
         f"- 篇幅：全部段落加起來{length}\n\n"
         f"只寫下面這 {len(sections)} 段，不要多寫其他段落：\n"
         f"{numbered}\n\n"
+        f"{LANGUAGE_RULE}\n"
         "需要引用時，引用上面訊號裡的原句。"
         "沒有明顯地雷或句點時，不要硬找問題。\n"
         "只輸出一個 JSON 物件，不要任何說明文字，鍵名照上面的段落名稱：\n"
@@ -220,7 +208,8 @@ def _build_default_prompt(signals: list[RealtimeSignal], persona_name: str) -> s
         "只輸出一個 JSON 物件，不要任何說明文字，鍵名固定為：\n"
         '{"摘要": "...", "做得好": "...", "可調整": "...", '
         '"改寫示範": "...", "下次可試": "..."}\n'
-        "沒有明顯地雷或句點時，「可調整」可以寫鼓勵繼續保持的話，不要硬找問題。"
+        "沒有明顯地雷或句點時，「可調整」可以寫鼓勵繼續保持的話，不要硬找問題。\n"
+        f"{LANGUAGE_RULE}"
     )
 
 
@@ -283,7 +272,8 @@ async def generate_report(
             temperature=0.7,
             max_output_tokens=max_tokens,
         )
-        content = parse_report(response.text, keys)
+        # 任務 2.3：段落內容轉繁體；鍵是段落名稱（自訂段落是使用者寫的標題），不動
+        content = {k: to_traditional(v) for k, v in parse_report(response.text, keys).items()}
     except (LLMError, ReportParseError) as exc:
         log.warning(
             "教練報告生成失敗",
@@ -298,25 +288,19 @@ async def generate_report(
 
 
 # ═══════════════════════════════════════════════════════════
-#  送達文字格式化（task 4.3）
+#  網頁上的段落（daily-coach-report-link 任務 6.1）
 # ═══════════════════════════════════════════════════════════
 
 
-def format_report_text(content: dict[str, str]) -> str:
-    """把段落結構組成一段文字，依內容裡的段落順序，段落間以空行分隔。
+def display_sections(content: dict[str, str] | None) -> list[dict[str, str]]:
+    """把報告內容轉成網頁要顯示的段落：[{"title", "body"}]，依內容裡的段落順序。
 
-    段落由生成時的教練設定決定（parse_report 已依設定排好順序），這裡不再
-    套固定的五段：使用者取消的段落本來就不在內容裡。預設段落的鍵換成標題，
-    自訂段落的鍵本身就是標題。
-
-    送出時交給既有的 split_message()——它的第一優先序就是依「\\n\\n」切分
-    段落，五段報告天然對齊這個邊界，不需要另外設計切分規則。
+    段落由生成時的教練設定決定（parse_report 已依設定排好順序）：使用者取消的
+    段落本來就不在內容裡。預設段落的鍵換成標題，自訂段落的鍵本身就是標題。
     """
-    parts = []
+    sections = []
     for key, raw in (content or {}).items():
-        value = raw.strip() if isinstance(raw, str) else ""
-        if not value:
-            continue
-        label = _SECTION_DISPLAY_LABEL.get(key, key)
-        parts.append(f"【{label}】\n{value}")
-    return "\n\n".join(parts)
+        body = raw.strip() if isinstance(raw, str) else ""
+        if body:
+            sections.append({"title": _SECTION_DISPLAY_LABEL.get(key, key), "body": body})
+    return sections

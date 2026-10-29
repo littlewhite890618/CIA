@@ -1,7 +1,7 @@
 """FastAPI 應用入口。
 
 POC 階段：健康檢查、webhook 接收（tasks 3.1–3.7）、使用者身分歸戶
-（task 6.1）、AI 身分揭露（task 7.5）、角色回覆生成（task 7.6，含邊界
+（task 6.1）、開場問候（原 task 7.5 的 AI 揭露）、角色回覆生成（task 7.6，含邊界
 反應 7.7）、擬真節奏（task 7.8）、延遲期間插話的過時檢查（task 7.9）、
 靜默結束的背景輪詢、話題萃取與訊號偵測（tasks 6.4、6.7、8.2）。
 
@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 from fastapi import BackgroundTasks, FastAPI, Request, Response
 from fastapi.responses import JSONResponse
@@ -33,30 +34,23 @@ from app.channels.instagram import (
     verify_subscription,
 )
 from app.channels.rate_limit import RateLimiter
-from app.channels.sender import MessageSender
+from app.channels.sender import MessageSender, SendOutcome
 from app.config import get_settings
 from app.db import repository as repo
-from app.db.models import MessageDirection, Persona
 from app.db.models import Session as SessionModel
-from app.auth.settings_link import build_settings_url, issue_token
-from app.db.models import SessionState, SignalStatus, SystemMessageKind, UserPersonaLink, utcnow
+from app.auth.settings_link import REPORT_PURPOSE, build_report_url, build_settings_url, issue_token
+from app.db.models import SessionState, SystemMessageKind, UserPersonaLink, utcnow
 from app.db.session import check_connection, db_session, init_db
-from app.dialog.coach_report import (
-    INVITE_BUTTON_TITLE,
-    INVITE_MESSAGE_TEXT,
-    build_invite_buttons,
-    format_report_text,
-    generate_report,
-    parse_invite_payload,
-)
+from app.dialog.coach_report import INVITE_BUTTON_TITLE, parse_invite_payload
+from app.dialog.digest_job import digest_message_text, last_run_at, next_run_at, run_digest
 from app.dialog.context import build_context, format_previous_conversation
 from app.dialog.summary import update_session_summary
 from app.dialog.delivery import send_paced_reply
 from app.dialog.signal_job import run_signal_detection
 from app.dialog.topics import extract_topics
+from app.dialog.traditional import to_traditional
 from app.llm import LLMConfigError, LLMMessage, LLMRouter, build_router, pick_fallback
 from app.logging_config import get_logger, setup_logging
-from app.personas.coaching_settings import session_coaching
 from app.personas.disclosure import compose_reply, should_disclose
 from app.personas.loader import PersonaCardError, load_all_cards
 from app.personas.prompt import render_system_prompt
@@ -64,6 +58,7 @@ from app.personas.schema import PersonaCard
 from app.personas.user_versions import resolve_card
 from app.web.backoffice import build_router as build_backoffice_router
 from app.web.settings_api import FRONTEND_DIST as SETTINGS_FRONTEND_DIST
+from app.web.report_api import build_router as build_report_router
 from app.web.settings_api import build_router as build_settings_router
 
 settings = get_settings()
@@ -85,6 +80,7 @@ llm_router: LLMRouter | None = None
 # 靜默輪詢背景任務的 handle（task 6.4）。lifespan 啟動時建立、
 # 關閉時取消——與 llm_router 一樣是行程層級單例。
 silence_poll_task: asyncio.Task | None = None
+digest_task: asyncio.Task | None = None
 
 
 @asynccontextmanager
@@ -192,10 +188,24 @@ async def lifespan(_app: FastAPI):
     # 6.4：靜默輪詢背景任務。與 llm_router 一樣是行程層級單例，
     # 用 asyncio.create_task 而非 BackgroundTasks——它不屬於任何一次
     # webhook 請求，是獨立於請求週期之外、持續運行到服務關閉的常駐任務。
-    global silence_poll_task
+    global silence_poll_task, digest_task
     silence_poll_task = asyncio.create_task(_silence_poll_loop())
 
+    # daily-coach-report-link 任務 5.2：每日教練回饋。連結與設定頁共用密鑰與對外網址，
+    # 沒設定就無法產生可用的連結，乾脆不啟動
+    if settings.settings_link_enabled:
+        digest_task = asyncio.create_task(_daily_digest_loop())
+    else:
+        log.warning("教練回饋連結未啟用：SETTINGS_LINK_SECRET 或 PUBLIC_BASE_URL 未設定，不會送出每日回饋")
+
     yield
+
+    if digest_task is not None:
+        digest_task.cancel()
+        try:
+            await digest_task
+        except asyncio.CancelledError:
+            pass
 
     # 先取消輪詢任務再關 llm_router：萃取話題的呼叫用的就是 llm_router，
     # 順序反過來的話，輪詢任務可能在供應商已關閉連線後才嘗試呼叫。
@@ -229,6 +239,8 @@ app.include_router(build_backoffice_router())
 
 # 第 6 群：使用者設定頁（API 與 React 打包後的頁面）
 app.include_router(build_settings_router(lambda slug: persona_cards.get(slug)))
+# daily-coach-report-link 第 6 群：教練回饋網頁。llm_router 在啟動後才建立，所以傳取用函式
+app.include_router(build_report_router(lambda: llm_router))
 if (SETTINGS_FRONTEND_DIST / "assets").is_dir():
     app.mount("/assets", StaticFiles(directory=SETTINGS_FRONTEND_DIST / "assets"), name="assets")
 
@@ -350,7 +362,7 @@ async def _handle_message(
 
     session, is_new_session = repo.get_or_create_session(db, user.id, persona_id)
 
-    # 7.5：揭露判斷必須用「這次活動之前」的最後互動時間，所以要在
+    # 7.5：要不要加開場問候，必須用「這次活動之前」的最後互動時間，所以要在
     # touch_session_by_user_activity 覆寫它之前先讀出來。新場次的
     # last_message_at 就是建立當下的時間，gap 必然是 0，但這裡仍靠
     # is_new_session 直接判定，不依賴時間精度。
@@ -408,11 +420,6 @@ def _is_settings_request(text: str) -> bool:
     return settings.settings_link_enabled and text.strip() == settings.settings_keyword
 
 
-def settings_hint_text() -> str:
-    """任務 5.5：揭露時告訴使用者可以傳關鍵字調整角色（2026-10-14 確認文案）。"""
-    return f"想調整我的個性，隨時傳「{settings.settings_keyword}」給我就好"
-
-
 def settings_link_text(url: str) -> str:
     minutes = settings.settings_link_ttl_seconds // 60
     return (
@@ -433,7 +440,7 @@ async def _send_settings_link(
     """回覆使用者專屬、有時效的設定頁連結（任務 5.1，design.md 決策 13、14）。
 
     不經過 LLM、不走擬真節奏：這是系統功能的回覆，不是角色在聊天。
-    新對話中「設定」可能就是第一則訊息，因此照樣附上 AI 揭露。
+    新對話中關鍵字可能就是第一則訊息，因此照樣加上開場問候。
     """
     token = issue_token(
         link_id,
@@ -446,6 +453,7 @@ async def _send_settings_link(
         settings_link_text(build_settings_url(settings.public_base_url, token)),
         disclose=disclose,
         persona_name=persona_name,
+        template=settings.opening_greeting,
     )
 
     client = InstagramClient(settings.ig_access_token, settings.ig_account_id)
@@ -508,8 +516,9 @@ def _handle_postback(
             session=session,
             platform_message_id=None,
             content=INVITE_BUTTON_TITLE,
+            meta={"system": SystemMessageKind.COACH_DIGEST},  # 不是聊天內容，不進對話上下文
         )
-        background_tasks.add_task(_handle_coach_report_click, report_session_id, session.id, igsid)
+        background_tasks.add_task(_handle_old_invite_click, report_session_id, session.id, igsid)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -571,13 +580,10 @@ async def _close_session_and_analyze(session_id: int) -> None:
         # 只是給個實務上限，不必無上限查詢。
         history = repo.recent_messages(db, session_id, 200)
         link = repo.get_link_by_session(db, session)
-        persona_id = session.persona_id
         repo.end_session(db, session)
 
     if link is None or not history:
         return
-
-    inbound_count = sum(1 for m in history if m.direction == MessageDirection.INBOUND)
 
     if llm_router is not None:
         context = build_context(history)
@@ -600,31 +606,14 @@ async def _close_session_and_analyze(session_id: int) -> None:
             burst_min_messages=settings.signal_burst_min_messages,
         )
 
-    # M9 tasks 2.2–2.4：話題萃取、訊號偵測都做完才發邀請——不是因為邀請
-    # 依賴它們的結果，是讓這輪背景工作的順序單純（結束 → 分析 → 邀請），
-    # 出錯時看 log 容易理解先後。
-    await _send_coach_invite(session_id, persona_id, link.igsid, inbound_count)
+    # daily-coach-report-link 任務 5.1：不再在對話結束當下發邀請，
+    # 改由每日排程在凌晨把結束的對話合併成一則回饋連結（_daily_digest_loop）
 
 
-async def _send_coach_invite(
-    session_id: int, persona_id: int, igsid: str, inbound_count: int
-) -> None:
-    """靜默結束後發送教練報告邀請（M9 tasks 2.2–2.4）。
-
-    互動過少不邀請（2.3）；視窗逾期不硬送（2.4，交給 MessageSender 的
-    既有前置檢查處理，不在這裡重複判斷——design.md 決策 6）。
-    """
-    if inbound_count < settings.coach_report_min_user_messages:
-        with db_session() as db:
-            session = db.get(SessionModel, session_id)
-            if session is not None:
-                repo.mark_invite_skipped(db, session, reason="too_few_messages")
-        log.info(
-            "互動過少，不發送教練報告邀請",
-            extra={"session_id": session_id, "inbound_count": inbound_count},
-        )
-        return
-
+async def _send_system_text(
+    session_id: int, persona_id: int, igsid: str, text: str, meta: dict
+) -> SendOutcome:
+    """以系統訊息送出一則文字（每日回饋連結）。不顯示輸入中、不走擬真節奏。"""
     client = InstagramClient(settings.ig_access_token, settings.ig_account_id)
     sender = MessageSender(
         client,
@@ -634,156 +623,97 @@ async def _send_coach_invite(
         max_wait_seconds=settings.send_max_wait_seconds,
     )
     try:
-        outcome = await sender.send_button_template(
-            session_id=session_id,
-            persona_id=persona_id,
-            igsid=igsid,
-            text=INVITE_MESSAGE_TEXT,
-            buttons=build_invite_buttons(session_id),
+        return await sender.send_reply(
+            session_id=session_id, persona_id=persona_id, igsid=igsid, text=text,
+            typing=False, meta=meta,
         )
     finally:
         await client.aclose()
 
-    with db_session() as db:
-        session = db.get(SessionModel, session_id)
-        if session is None:
-            return
-        if outcome.ok:
-            session.invite_sent = True
-            db.flush()
-        else:
-            repo.mark_invite_skipped(db, session, reason=outcome.blocked_reason or "send_failed")
 
-    log.info(
-        "教練報告邀請處理完成",
-        extra={"session_id": session_id, "sent": outcome.ok, "reason": outcome.blocked_reason},
+def _report_url(digest_id: int) -> str:
+    token = issue_token(
+        digest_id,
+        secret=settings.settings_link_secret,
+        ttl_seconds=settings.coach_report_link_ttl_days * 86400,
+        purpose=REPORT_PURPOSE,
+    )
+    return build_report_url(settings.public_base_url, token)
+
+
+async def _run_digest(before: datetime) -> None:
+    await run_digest(
+        before,
+        send=_send_system_text,
+        url_for=_report_url,
+        min_user_messages=settings.coach_report_min_user_messages,
+        ttl_days=settings.coach_report_link_ttl_days,
     )
 
 
-async def _handle_coach_report_click(
+async def _daily_digest_loop() -> None:
+    """每日教練回饋（daily-coach-report-link 任務 5.2，design.md 決策 2）。
+
+    啟動時先以「上一個排定時刻」為界補跑：只會撈到那之前就結束、卻沒被處理的
+    對話（例如服務在 04:00 剛好停機），之後才結束的照常等下一個排定時刻。
+    """
+    at, tz = settings.coach_digest_time, settings.coach_digest_timezone
+    try:
+        await _run_digest(last_run_at(utcnow(), at=at, tz_name=tz))
+    except Exception:
+        log.exception("每日教練回饋補跑發生例外")
+    while True:
+        run_at = next_run_at(utcnow(), at=at, tz_name=tz)
+        await asyncio.sleep(max((run_at - utcnow()).total_seconds(), 0))
+        try:
+            await _run_digest(run_at)
+        except Exception:
+            # 常駐任務：單次出錯不能讓迴圈死掉，否則之後每天都不會再送
+            log.exception("每日教練回饋送出發生例外，明天同一時刻再試")
+
+
+async def _handle_old_invite_click(
     report_session_id: int, delivery_session_id: int, igsid: str
 ) -> None:
-    """使用者點擊教練報告邀請後的處理（M9 tasks 4.1、4.2）。
+    """改版前送出的「看這次的回饋」按鈕被點擊（任務 5.4）：回覆該段對話的回饋連結。
 
-    report_session_id 是邀請所屬的那場已結束對話（報告與訊號都掛在它上面）；
-    delivery_session_id 是點擊當下的場次（get_or_create_session 在
-    _handle_message 已建立或延續），送達要用它的視窗——report_session_id
-    的視窗早在對話靜默時就過期了，那正是它會靜默結束、觸發邀請的原因，
-    拿它做視窗檢查一定會誤判成逾期。
+    已經併入每日回饋的就沿用那一則，沒有就為這段對話單獨建一則。連結送在
+    點擊當下的場次上（點擊會重置 24 小時視窗）。不在私訊中送報告內容。
     """
     with db_session() as db:
         report_session = db.get(SessionModel, report_session_id)
-    if report_session is None:
-        log.warning("教練報告對應的 session 不存在", extra={"session_id": report_session_id})
-        return
-
-    with db_session() as db:
-        report = repo.get_or_create_coach_report(db, report_session_id)
-        already_generated = report.generated_at is not None
-
-    if not already_generated:
-        # task 3.4：訊號未就緒或偵測失敗，不以不完整的訊號生成。
-        # 記一個原因方便 scripts/rerun_coach_reports.py 之後重試
-        # （task 5.2），不需要使用者再點一次可能已經消失的按鈕。
-        if report_session.signal_status != SignalStatus.OK:
-            with db_session() as db:
-                report = repo.get_or_create_coach_report(db, report_session_id)
-                repo.mark_report_failed(db, report, "signals_not_ready")
-            log.info(
-                "訊號尚未就緒，暫不生成教練報告",
-                extra={
-                    "session_id": report_session_id,
-                    "signal_status": report_session.signal_status,
-                },
-            )
+        if report_session is None:
+            log.warning("教練報告對應的 session 不存在", extra={"session_id": report_session_id})
             return
-
-        if llm_router is None:
-            log.warning("LLM 未設定，無法生成教練報告", extra={"session_id": report_session_id})
-            return
-
-        with db_session() as db:
-            signals = repo.signals_for_session(db, report_session_id)
-            persona = db.get(Persona, report_session.persona_id)
-            persona_name = persona.name if persona else "角色"
-            coaching = session_coaching(db, report_session)
-
-        result = await generate_report(llm_router, signals, persona_name, coaching)
-        with db_session() as db:
-            report = repo.get_or_create_coach_report(db, report_session_id)
-            if result.ok and result.content is not None:
-                repo.mark_report_generated(db, report, result.content)
-            else:
-                repo.mark_report_failed(db, report, result.error or "unknown")
-                log.warning(
-                    "教練報告生成失敗",
-                    extra={"session_id": report_session_id, "error": result.error},
-                )
+        digest_id = report_session.coach_digest_id
+        if digest_id is None:
+            link = repo.get_link_by_session(db, report_session)
+            if link is None:
                 return
+            digest_id = repo.create_digest(db, link, [report_session]).id
+        persona_id = report_session.persona_id
 
-    await _deliver_coach_report(report_session_id, delivery_session_id, igsid)
-
-
-async def _deliver_coach_report(
-    report_session_id: int, delivery_session_id: int, igsid: str
-) -> None:
-    """送出已生成的教練報告（task 4.3、4.4）。
-
-    delivery_session_id 決定視窗與未互動檢查用哪個 session；報告內容與
-    「是否已送達」的狀態則一律讀寫 report_session_id 底下那筆
-    coach_reports——同一份報告不會因為從哪個場次觸發送達而變成兩筆。
-
-    補救路徑（task 5.1）只由使用者再次點擊查看回饋觸發（見
-    _handle_coach_report_click 的 already_generated 分支），不會在使用者
-    傳送其他不相關訊息時自動補送——2026-09-24 產品決策：報告與當下對話
-    無關時突然送出會讓使用者一頭霧水，不記得自己先前點過什麼。
-    """
-    with db_session() as db:
-        report = repo.get_coach_report(db, report_session_id)
-        delivery_session = db.get(SessionModel, delivery_session_id)
-
-    if report is None or report.generated_at is None:
-        return
-    if report.delivered_at is not None:
-        return  # 已送達。目前重複點擊直接不回應（見 4.2 的既有規則），維持原狀不動
-    if delivery_session is None:
+    if not settings.settings_link_enabled:
+        log.warning("回饋連結功能未啟用，無法回覆舊按鈕", extra={"session_id": report_session_id})
         return
 
-    text = format_report_text(report.content or {})
-    if not text:
-        return
-
-    client = InstagramClient(settings.ig_access_token, settings.ig_account_id)
-    sender = MessageSender(
-        client,
-        rate_limiter,
-        max_retries=settings.send_max_retries,
-        retry_base_seconds=settings.send_retry_base_seconds,
-        max_wait_seconds=settings.send_max_wait_seconds,
+    outcome = await _send_system_text(
+        delivery_session_id,
+        persona_id,
+        igsid,
+        digest_message_text(_report_url(digest_id), settings.coach_report_link_ttl_days),
+        {"system": SystemMessageKind.COACH_DIGEST},
     )
-    try:
-        outcome = await sender.send_reply(
-            session_id=delivery_session_id,
-            persona_id=delivery_session.persona_id,
-            igsid=igsid,
-            text=text,
-        )
-    finally:
-        await client.aclose()
-
-    if outcome.ok:
-        with db_session() as db:
-            fresh_report = repo.get_coach_report(db, report_session_id)
-            if fresh_report is not None:
-                repo.mark_report_delivered(db, fresh_report)
-        log.info("教練報告已送達", extra={"session_id": report_session_id})
-    else:
-        # 保留為「已生成未送達」，不動 content——使用者之後再次點擊查看
-        # 回饋時會再嘗試送達，不重新呼叫模型（task 5.1）。
-        log.info(
-            "教練報告送達失敗，保留待補送",
-            extra={"session_id": report_session_id, "reason": outcome.blocked_reason},
-        )
+    with db_session() as db:
+        digest = repo.get_digest(db, digest_id)
+        if outcome.ok:
+            repo.mark_digest_sent(db, digest)
+        else:
+            repo.mark_digest_skipped(db, digest, outcome.blocked_reason or "send_failed")
+    log.info(
+        "舊按鈕已回覆回饋連結",
+        extra={"session_id": report_session_id, "digest_id": digest_id, "sent": outcome.ok},
+    )
 
 
 def _is_stale(session_id: int, since_message_id: int) -> bool:
@@ -805,7 +735,7 @@ async def _send_reply(
     message_id: int,
 ) -> None:
     """背景任務：生成角色回覆（7.6）並依擬真節奏送出（7.8），視需要
-    附上揭露（7.5），送出前確認未被使用者插話的新訊息取代（7.9）。
+    加上開場問候（7.5），送出前確認未被使用者插話的新訊息取代（7.9）。
 
     **必須是 async def，不能是「同步函式內部包一層 asyncio.run()」**：
     後者曾經是這裡的寫法，且對只用一次性資源的 InstagramClient 沒有問題
@@ -892,14 +822,16 @@ async def _send_reply(
         # 「接了但失敗」的差異——這差異只對開發者有意義。
         reply_text, llm_response = pick_fallback(), None
 
-    # 揭露必須在 plan_reply 之前組好，否則拆分可能把揭露文字推到第二則，
-    # 變成使用者先看到角色說話、才被告知對方是 AI——違反 7.5 的
-    # 「先於或伴隨第一則對話內容出現」。
+    # daily-coach-report-link 任務 2.3：模型偶爾夾雜簡體字，送出前轉成繁體
+    reply_text = to_traditional(reply_text)
+
+    # 開場問候必須在 plan_reply 之前組好，否則拆分可能把它推到第二則，
+    # 變成使用者先看到角色說話、才看到問候。
     text = compose_reply(
         reply_text,
         disclose=disclose,
         persona_name=card.identity.name,
-        hint=settings_hint_text() if settings.settings_link_enabled else None,
+        template=settings.opening_greeting,
     )
 
     client = InstagramClient(settings.ig_access_token, settings.ig_account_id)

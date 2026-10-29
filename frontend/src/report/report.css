@@ -1,0 +1,286 @@
+/* 教練回饋頁：疊起來的信紙。沿用設定頁（settings.css）的色彩、字體與元件，
+   這裡只加信紙本身。藍色原子筆＝使用者自己說過的話；淺藍螢光筆＝可以換的新說法；不用紅筆。 */
+
+:root {
+  --letter-line: 1.85;
+  --letter-gap: 22px;
+  --letter-gutter: 10px;
+}
+
+.letters {
+  max-width: 680px;
+  min-height: 100dvh;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.letters-cover {
+  background: color-mix(in srgb, var(--paper) 94%, transparent);
+  backdrop-filter: saturate(1.4) blur(8px);
+}
+
+.button-cover-quiet {
+  flex: none;
+  background: transparent;
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1.5px var(--rule-strong);
+}
+
+.button-cover-quiet:hover {
+  background: var(--paper-hover);
+}
+
+/* ── 信紙 ───────────────────────────────────────── */
+
+.letter-stack {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--letter-gap) + 11px);
+  padding: 20px var(--letter-gutter) 0;
+}
+
+.letter {
+  position: relative;
+  padding: 26px var(--content-right) 30px calc(var(--content-left) - var(--letter-gutter));
+  background: var(--paper);
+  border-radius: 6px;
+  /* 外框、底下還壓著的兩張信紙（往下露出 6px、11px 的紙邊）、柔和的影子 */
+  box-shadow:
+    0 0 0 1px var(--rule),
+    0 6px 0 -4px var(--paper),
+    0 6px 0 -3px var(--rule-strong),
+    0 11px 0 -8px var(--paper),
+    0 11px 0 -7px var(--rule),
+    0 1px 2px rgb(var(--shadow) / 0.06),
+    0 16px 26px -16px rgb(var(--shadow) / 0.3);
+}
+
+/* 頁邊線，跟設定頁同一條 */
+.letter::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--margin-x) - var(--letter-gutter));
+  width: 1px;
+  background: var(--margin-line);
+}
+
+.letterhead {
+  padding-bottom: 12px;
+  border-bottom: 3px double var(--rule-strong);
+}
+
+.letter-date {
+  margin: 0;
+  font: 400 1.625rem/1.2 var(--font-display);
+  color: var(--ink);
+  text-wrap: balance;
+}
+
+/* 日期與時段各自不拆行：手機上會整齊地分成「日期」「時段」兩行 */
+.letter-date > span {
+  white-space: nowrap;
+}
+
+.letter-time {
+  display: inline-block;
+  font-size: 0.78em;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--ink) 82%, var(--print));
+}
+
+/* ── 段落 ───────────────────────────────────────── */
+
+.letter-section {
+  margin-top: 26px;
+}
+
+.letter-section-title {
+  margin: 0 0 4px;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--print);
+}
+
+/* 內文寫在橫線上：行高與橫線間距一致 */
+.letter-text {
+  max-width: 34em;
+  margin: 0;
+  font-size: 1.0625rem;
+  line-height: var(--letter-line);
+  color: var(--print);
+  background-image: linear-gradient(transparent calc(100% - 1px), var(--rule) 0);
+  background-size: 100% calc(var(--letter-line) * 1em);
+  text-wrap: pretty;
+}
+
+.letter-text + .letter-text {
+  margin-top: calc(var(--letter-line) * 0.5em);
+}
+
+.said {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.said-new {
+  background: linear-gradient(transparent 52%, var(--highlight) 0 92%, transparent 0);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.letter-note {
+  max-width: 30em;
+  margin: 22px 0 0;
+  font-size: 1rem;
+  line-height: 1.7;
+  color: var(--print-muted);
+}
+
+.letter-retry .button {
+  margin-top: 14px;
+}
+
+/* ── 整理中：空白橫線上，筆一行一行寫過去 ───────── */
+
+.letter-writing .letter-note {
+  color: var(--print);
+}
+
+.blank-lines {
+  margin-top: 6px;
+}
+
+.blank-line {
+  position: relative;
+  display: block;
+  height: calc(var(--letter-line) * 1.0625rem);
+  border-bottom: 1px solid var(--rule);
+  overflow: hidden;
+}
+
+.blank-line:nth-child(odd) {
+  margin-right: 12%;
+}
+
+.pen-stroke {
+  position: absolute;
+  left: 0;
+  bottom: 5px;
+  width: 100%;
+  height: 12px;
+  overflow: visible;
+}
+
+.blank-line:nth-child(odd) .pen-stroke {
+  width: 78%;
+}
+
+.pen-stroke path {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  /* 五行輪流寫，寫滿一頁換一張新的再寫：一輪 6 秒，每行在自己的那一段時間內寫完 */
+  animation: pen-write 6s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+  animation-delay: calc(var(--i) * 0.9s);
+}
+
+@keyframes pen-write {
+  0% {
+    stroke-dashoffset: 1;
+    opacity: 1;
+  }
+  14% {
+    stroke-dashoffset: 0;
+  }
+  92% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+}
+
+/* 一段寫好時：字由左到右寫上去，一個段落接一個段落 */
+.letter-body.is-fresh .letter-section {
+  animation: write-in 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--order) * 140ms);
+}
+
+@keyframes write-in {
+  from {
+    clip-path: inset(0 82% 0 0);
+    opacity: 0.35;
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
+  }
+}
+
+/* ── 讀完 ───────────────────────────────────────── */
+
+.letters-close {
+  padding: 34px var(--content-right) calc(40px + env(safe-area-inset-bottom, 0px)) calc(var(--content-left) - var(--letter-gutter));
+}
+
+.letters-close-text {
+  margin: 0 0 16px;
+  font: 400 1.25rem/1.4 var(--font-display);
+  color: var(--print);
+}
+
+/* ── 桌面：信紙疊在桌上 ─────────────────────────── */
+
+@media (min-width: 720px) {
+  :root {
+    --letter-gap: 30px;
+    --letter-gutter: 0px;
+  }
+
+  .letters {
+    padding: 0 0 48px;
+  }
+
+  .letter-stack {
+    padding-top: 32px;
+  }
+
+  .letter {
+    padding-top: 34px;
+    padding-bottom: 38px;
+  }
+
+  .letter-date {
+    font-size: 1.875rem;
+  }
+
+  .letter-text {
+    font-size: 1.125rem;
+  }
+
+  .blank-line {
+    height: calc(var(--letter-line) * 1.125rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pen-stroke {
+    display: none;
+  }
+
+  .letter-body.is-fresh .letter-section {
+    animation: none;
+  }
+}

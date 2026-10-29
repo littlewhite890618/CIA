@@ -6,12 +6,9 @@
 場次重試；若訊號本身也失敗，需先用 rerun_signals.py 補齊，再跑這支。
 
 跟 rerun_signals.py 是同一種腳本：不需要使用者再互動一次，直接拿資料庫
-裡已存的訊號重新呼叫 coaching 路徑。生成成功後**立即嘗試送達**——與
-webhook 觸發的路徑不同，這裡沒有「點擊當下的 session」可以拿來當送達
-視窗依據，改用該使用者＋角色目前的 UserPersonaLink 查 igsid，
-並用該場次自己的 session_id 做送達（若視窗已逾期，直接送就會失敗，
-保留為已生成未送達，等使用者下次互動時由 5.1 的補送邏輯接手，
-不是這支腳本的責任）。
+裡已存的訊號重新呼叫 coaching 路徑。daily-coach-report-link 之後報告只在
+回饋網頁上呈現，這裡**只產生並保存**，不再私訊送出；使用者打開連結就會看到。
+產生的邏輯與網頁共用 app/dialog/report_service.py。
 
 用法（在專案根目錄執行）：
 
@@ -29,17 +26,18 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.channels.instagram import InstagramClient  # noqa: E402
-from app.channels.rate_limit import RateLimiter  # noqa: E402
-from app.channels.sender import MessageSender  # noqa: E402
 from app.config import get_settings  # noqa: E402
 from app.db import repository as repo  # noqa: E402
-from app.db.models import Persona  # noqa: E402
 from app.db.models import Session as SessionModel  # noqa: E402
-from app.db.models import SignalStatus  # noqa: E402
 from app.db.session import db_session, init_db  # noqa: E402
-from app.dialog.coach_report import format_report_text, generate_report  # noqa: E402
-from app.personas.coaching_settings import session_coaching  # noqa: E402
+from app.dialog.report_service import (  # noqa: E402
+    ANALYSIS_FAILED,
+    ANALYSIS_PENDING,
+    GENERATION_FAILED,
+    MISSING,
+    READY,
+    generate_session_report,
+)
 from app.llm import build_router  # noqa: E402
 from app.logging_config import setup_logging  # noqa: E402
 
@@ -61,51 +59,16 @@ def _describe(session_id: int) -> str:
         return f"session {session_id}：signal_status={s.signal_status} failure_reason={reason}"
 
 
-async def _rerun_one(router, session_id: int, rate_limiter: RateLimiter) -> str:
+async def _rerun_one(router, session_id: int) -> str:
     """回傳這場的處理結果描述。"""
-    with db_session() as db:
-        session = db.get(SessionModel, session_id)
-        if session is None:
-            return "不存在，略過"
-        if session.signal_status != SignalStatus.OK:
-            return f"訊號尚未就緒（{session.signal_status}），請先跑 rerun_signals.py"
-
-        signals = repo.signals_for_session(db, session_id)
-        persona = db.get(Persona, session.persona_id)
-        persona_name = persona.name if persona else "角色"
-        link = repo.get_link_by_session(db, session)
-        igsid = link.igsid if link else None
-        persona_id = session.persona_id
-        coaching = session_coaching(db, session)
-
-    result = await generate_report(router, signals, persona_name, coaching)
-    with db_session() as db:
-        report = repo.get_or_create_coach_report(db, session_id)
-        if not result.ok or result.content is None:
-            repo.mark_report_failed(db, report, result.error or "unknown")
-            return f"生成仍失敗：{result.error}"
-        repo.mark_report_generated(db, report, result.content)
-
-    if igsid is None:
-        return "生成成功，但找不到 igsid，無法送達，留待下次使用者互動時補送"
-
-    text = format_report_text(result.content)
-    client = InstagramClient(get_settings().ig_access_token, get_settings().ig_account_id)
-    sender = MessageSender(client, rate_limiter)
-    try:
-        outcome = await sender.send_reply(
-            session_id=session_id, persona_id=persona_id, igsid=igsid, text=text
-        )
-    finally:
-        await client.aclose()
-
-    if outcome.ok:
-        with db_session() as db:
-            fresh = repo.get_coach_report(db, session_id)
-            if fresh is not None:
-                repo.mark_report_delivered(db, fresh)
-        return "生成成功並已送達"
-    return f"生成成功，送達失敗（{outcome.blocked_reason}），保留待補送"
+    result = await generate_session_report(router, session_id)
+    return {
+        READY: "已產生（使用者打開回饋連結就會看到）",
+        MISSING: "不存在，略過",
+        ANALYSIS_PENDING: "行為分析尚未完成，請稍後再試",
+        ANALYSIS_FAILED: "行為分析失敗，請先跑 rerun_signals.py",
+        GENERATION_FAILED: "產生仍失敗，見 log",
+    }[result.status]
 
 
 async def _rerun(session_ids: list[int]) -> int:
@@ -123,11 +86,10 @@ async def _rerun(session_ids: list[int]) -> int:
         retry_base_seconds=settings.llm_retry_base_seconds,
         fallback_path_configs=settings.llm_fallback_path_configs,
     )
-    rate_limiter = RateLimiter(settings.send_rate_limit_per_hour)
     failures = 0
     try:
         for session_id in session_ids:
-            outcome = await _rerun_one(router, session_id, rate_limiter)
+            outcome = await _rerun_one(router, session_id)
             print(f"session {session_id}：{outcome}")
             if "失敗" in outcome or "不存在" in outcome:
                 failures += 1

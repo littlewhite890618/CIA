@@ -36,6 +36,7 @@ export const RECENT_LIFE_BY_OCCUPATION: Record<string, string> = {
   行銷企劃: "手上的活動企劃改到第五版，主管還是不太滿意",
   咖啡店店員: "店裡新來一個工讀生，她最近都在教對方拉花",
   研究生: "論文卡在資料分析，每週都在跟指導教授約時間",
+  空姐: "剛飛完一趟長途班機，時差還沒調回來，這幾天都睡得斷斷續續",
 };
 
 /** 自訂職業時的近況：不綁特定職業 */
@@ -55,7 +56,7 @@ export const PAGES: PageDef[] = [
         path: "identity.occupation",
         label: "職業",
         kind: "select",
-        options: ["幼兒園老師", "護理師", "行銷企劃", "咖啡店店員", "研究生"],
+        options: ["幼兒園老師", "護理師", "行銷企劃", "咖啡店店員", "研究生", "空姐"],
       },
       {
         path: "identity.location",

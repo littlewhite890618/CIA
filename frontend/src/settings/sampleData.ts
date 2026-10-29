@@ -82,5 +82,6 @@ export function sampleSettings(): SettingsData {
     defaults: { card: clone(SUNNY), coaching: clone(DEFAULT_COACHING) },
     current: { card: clone(SUNNY), coaching: clone(DEFAULT_COACHING) },
     baselineNeverEngages: ["索取電話 / LINE / 其他聯絡方式", "任何性方面的暗示或要求"],
+    keyword: "芝麻開門",
   };
 }

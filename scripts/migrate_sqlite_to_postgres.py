@@ -48,6 +48,7 @@ TABLE_ORDER = [
     "user_persona_links",
     "user_persona_versions",
     "persona_coaching",
+    "coach_digests",
     "sessions",
     "messages",
     "realtime_signals",
